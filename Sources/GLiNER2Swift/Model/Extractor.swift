@@ -1,0 +1,298 @@
+// Extractor.swift
+// GLiNER2 Extractor model
+//
+// Matches Python: gliner2/model.py:Extractor
+
+import Foundation
+import MLX
+import MLXNN
+
+/// GLiNER2 Extractor Model.
+///
+/// This model accepts PreprocessedBatch for efficient training and inference.
+/// Architecture:
+/// - Encoder: DeBERTa-v3-base (microsoft/deberta-v3-base) with disentangled attention
+/// - Span representation: SpanMarkerV0
+/// - Classifier: MLP for classification tasks
+/// - Count prediction: MLP for count prediction
+/// - Count embedding: CountLSTMv2 for structure extraction
+public class Extractor: Module {
+    /// Model configuration
+    public let config: ExtractorConfig
+
+    /// Maximum span width
+    public let maxWidth: Int
+
+    /// Hidden size from encoder
+    public let hiddenSize: Int
+
+    /// DeBERTa encoder with disentangled attention
+    public let encoder: DeBERTaEncoder
+
+    /// Span representation layer
+    public let spanRep: SpanRepLayer
+
+    /// Classifier for classification tasks: hidden → 2*hidden → 1
+    public let classifier: Sequential
+
+    /// Count prediction layer: hidden → 2*hidden → 20
+    public let countPred: Sequential
+
+    /// Count embedding module (CountLSTMv2 for gliner2-base-v1)
+    public let countEmbed: CountLSTMv2
+
+    /// Initialize Extractor from configuration
+    ///
+    /// - Parameter config: Model configuration
+    public init(config: ExtractorConfig) {
+        self.config = config
+        self.maxWidth = config.maxWidth
+        self.hiddenSize = config.hiddenSize
+
+        // Initialize DeBERTa encoder
+        let debertaConfig = DeBERTaConfig(
+            vocabSize: config.vocabSize,
+            hiddenSize: config.hiddenSize,
+            numHiddenLayers: 12,
+            numAttentionHeads: 12,
+            intermediateSize: 3072,
+            positionBuckets: 256,
+            maxPositionEmbeddings: 512,
+            hiddenDropoutProb: 0.1,
+            attentionDropoutProb: 0.1,
+            layerNormEps: 1e-7,
+            posAttType: ["c2p", "p2c"]
+        )
+        self.encoder = DeBERTaEncoder(config: debertaConfig)
+
+        // Initialize span representation layer
+        self.spanRep = SpanRepLayer(
+            hiddenSize: hiddenSize,
+            maxWidth: maxWidth,
+            spanMode: .markerV0,
+            dropout: config.spanDropout
+        )
+
+        // Initialize classifier: hidden → 2*hidden → 1
+        self.classifier = createMLP(
+            inputDim: hiddenSize,
+            intermediateDims: [hiddenSize * 2],
+            outputDim: 1,
+            dropout: 0.0,
+            activation: .relu,
+            addLayerNorm: false
+        )
+
+        // Initialize count prediction: hidden → 2*hidden → 20
+        self.countPred = createMLP(
+            inputDim: hiddenSize,
+            intermediateDims: [hiddenSize * 2],
+            outputDim: config.maxCount,
+            dropout: 0.0,
+            activation: .relu,
+            addLayerNorm: false
+        )
+
+        // Initialize count embedding
+        self.countEmbed = CountLSTMv2(
+            hiddenSize: hiddenSize,
+            maxCount: config.maxCount
+        )
+    }
+
+    // MARK: - Encoder Forward
+
+    /// Run encoder on input IDs
+    ///
+    /// - Parameters:
+    ///   - inputIds: Token IDs [batch, seq_len]
+    ///   - attentionMask: Optional attention mask [batch, seq_len]
+    /// - Returns: Encoder output with hidden states
+    public func encode(
+        _ inputIds: MLXArray,
+        attentionMask: MLXArray? = nil
+    ) -> DeBERTaEncoderOutput {
+        encoder(inputIds, attentionMask: attentionMask)
+    }
+
+    // MARK: - Span Representation
+
+    /// Compute span representations for token embeddings.
+    ///
+    /// - Parameters:
+    ///   - tokenEmbeddings: Token embeddings [textLen, hidden]
+    ///   - debug: If true, print intermediate values for debugging
+    /// - Returns: Dictionary with span_rep, spans_idx, and span_mask
+    public func computeSpanRep(_ tokenEmbeddings: MLXArray, debug: Bool = false) -> SpanInfo {
+        let textLength = tokenEmbeddings.dim(0)
+
+        // Build span indices: (start, end) for each position and width
+        var spansIdx: [(Int, Int)] = []
+        for i in 0..<textLength {
+            for j in 0..<maxWidth {
+                if i + j < textLength {
+                    spansIdx.append((i, i + j))
+                } else {
+                    spansIdx.append((-1, -1))  // Invalid span
+                }
+            }
+        }
+
+        // Convert to MLXArray [1, numSpans, 2]
+        let flatSpans = spansIdx.flatMap { [$0.0, $0.1] }
+        var spanIdxArray = MLXArray(flatSpans.map { Int32($0) })
+        spanIdxArray = spanIdxArray.reshaped([1, spansIdx.count, 2])
+
+        // Create span mask: true for invalid spans
+        let startInvalid = MLX.equal(spanIdxArray[0..., 0..., 0], MLXArray(Int32(-1)))
+        let endInvalid = MLX.equal(spanIdxArray[0..., 0..., 1], MLXArray(Int32(-1)))
+        let spanMask = MLX.logicalOr(startInvalid, endInvalid)
+
+        // Replace invalid indices with (0, 0) for safe indexing
+        let safeSpans = MLX.where(
+            spanMask.expandedDimensions(axis: -1),
+            MLXArray.zeros([1, spansIdx.count, 2]),
+            spanIdxArray
+        )
+
+        // Compute span representations
+        let tokenEmbsBatched = tokenEmbeddings.expandedDimensions(axis: 0)  // [1, textLen, hidden]
+        var spanRepResult = spanRep(tokenEmbsBatched, spanIdx: safeSpans, debug: debug)  // [1, textLen, maxWidth, hidden]
+        spanRepResult = spanRepResult.squeezed(axis: 0)  // [textLen, maxWidth, hidden]
+
+        // Reshape to [numSpans, hidden]
+        let numSpans = textLength * maxWidth
+        spanRepResult = spanRepResult.reshaped([numSpans, hiddenSize])
+
+        return SpanInfo(
+            spanRep: spanRepResult,
+            spansIdx: spanIdxArray,
+            spanMask: spanMask
+        )
+    }
+
+    // MARK: - Inference Helpers
+
+    /// Extract scores for a schema
+    ///
+    /// - Parameters:
+    ///   - spanInfo: Span representation info
+    ///   - schemaEmb: Schema embeddings [numFields+1, hidden]
+    ///   - predCount: Predicted count value
+    /// - Returns: Span scores [predCount, numFields, numSpans, maxWidth]
+    public func computeSpanScores(
+        spanInfo: SpanInfo,
+        schemaEmb: MLXArray,
+        predCount: Int
+    ) -> MLXArray {
+        // Get field embeddings (skip [P] token)
+        let fieldEmbs = schemaEmb[1...]
+
+        // Get count-aware structure projections
+        let structProj = countEmbed(fieldEmbs, goldCountVal: predCount)  // [count, fields, hidden]
+
+        // Compute scores via einsum: 'lkd,bpd->bplk'
+        // spanRep: [L*maxWidth, D] -> reshape to [L, maxWidth, D]
+        // structProj: [count, fields, D]
+        let L = spanInfo.spansIdx.dim(1) / maxWidth
+        let spanRepReshaped = spanInfo.spanRep.reshaped([L, maxWidth, hiddenSize])
+
+        // Einsum: scores[b,p,l,k] = sum_d(spanRep[l,k,d] * structProj[b,p,d])
+        // We need [count, fields, L, maxWidth]
+        var scores = MLX.einsum("lkd,cpd->cplk", spanRepReshaped, structProj)
+
+        // Apply sigmoid
+        scores = MLX.sigmoid(scores)
+
+        return scores
+    }
+}
+
+// MARK: - Span Info
+
+/// Container for span representation information
+public struct SpanInfo {
+    /// Span representations [numSpans, hidden]
+    public let spanRep: MLXArray
+
+    /// Span indices [1, numSpans, 2]
+    public let spansIdx: MLXArray
+
+    /// Span mask [1, numSpans] - true for invalid spans
+    public let spanMask: MLXArray
+}
+
+// MARK: - Weight Loading
+
+extension Extractor {
+    /// Load all weights from SafeTensors files
+    ///
+    /// - Parameters:
+    ///   - modelWeightsUrl: URL to gliner2_weights.safetensors
+    ///   - encoderWeightsUrl: URL to encoder_weights.safetensors
+    public func loadWeights(modelWeightsUrl: URL, encoderWeightsUrl: URL) throws {
+        // Load model weights
+        let modelWeights = try SafeTensorsLoader.load(from: modelWeightsUrl)
+        loadModelWeights(modelWeights)
+
+        // Load encoder weights
+        let encoderWeights = try SafeTensorsLoader.load(from: encoderWeightsUrl)
+        encoder.loadWeights(encoderWeights, prefix: "encoder")
+    }
+
+    /// Load GLiNER2 model weights (excluding encoder)
+    ///
+    /// - Parameter weights: Dictionary mapping parameter names to arrays
+    public func loadModelWeights(_ weights: [String: MLXArray]) {
+        // Load span representation weights
+        // Converted weights use camelCase: spanRep.spanRepLayer.*
+        spanRep.loadWeights(weights, prefix: "spanRep")
+
+        // Load classifier weights
+        // Converted weights use: classifier.layers.{0,1}.weight/bias
+        loadMLPWeights(classifier, weights: weights, prefix: "classifier.layers")
+
+        // Load count prediction weights
+        // Converted weights use: countPred.layers.{0,1}.weight/bias
+        loadMLPWeights(countPred, weights: weights, prefix: "countPred.layers")
+
+        // Load count embedding weights
+        // Converted weights use: countEmbed.*
+        countEmbed.loadWeights(weights, prefix: "countEmbed")
+    }
+
+    /// Load encoder weights separately
+    ///
+    /// - Parameter weights: Dictionary with encoder weights
+    public func loadEncoderWeights(_ weights: [String: MLXArray]) {
+        encoder.loadWeights(weights, prefix: "encoder")
+    }
+
+    private func loadMLPWeights(_ mlp: Sequential, weights: [String: MLXArray], prefix: String) {
+        // MLP structure: Linear → ReLU → Linear
+        // Swift Sequential layers array: [0]=Linear, [1]=ReLU, [2]=Linear
+        //
+        // Weight mapping (convert_weights.py remaps PyTorch indices):
+        //   classifier.0.weight → classifier.layers.0.weight (first Linear)
+        //   classifier.2.weight → classifier.layers.1.weight (second Linear)
+        //
+        // So with prefix "classifier.layers", we look for .0 and .1
+
+        if let linear0 = mlp.layers[0] as? Linear {
+            updateLinearWeights(
+                linear0,
+                weight: weights["\(prefix).0.weight"],
+                bias: weights["\(prefix).0.bias"]
+            )
+        }
+
+        if let linear2 = mlp.layers[2] as? Linear {
+            // Note: converted weights use .1 for second linear, not .2
+            updateLinearWeights(
+                linear2,
+                weight: weights["\(prefix).1.weight"],
+                bias: weights["\(prefix).1.bias"]
+            )
+        }
+    }
+}

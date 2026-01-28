@@ -1,0 +1,1323 @@
+{
+  "basic_punctuation": {
+    "text": "Hello, world!",
+    "token_ids": [
+      5365,
+      261,
+      447,
+      300
+    ],
+    "token_ids_with_special": [
+      1,
+      5365,
+      261,
+      447,
+      300,
+      2
+    ],
+    "tokens": [
+      "▁Hello",
+      ",",
+      "▁world",
+      "!"
+    ],
+    "num_tokens": 4
+  },
+  "basic_sentence": {
+    "text": "Tim Cook is CEO of Apple.",
+    "token_ids": [
+      4185,
+      5851,
+      269,
+      3033,
+      265,
+      2013,
+      260
+    ],
+    "token_ids_with_special": [
+      1,
+      4185,
+      5851,
+      269,
+      3033,
+      265,
+      2013,
+      260,
+      2
+    ],
+    "tokens": [
+      "▁Tim",
+      "▁Cook",
+      "▁is",
+      "▁CEO",
+      "▁of",
+      "▁Apple",
+      "."
+    ],
+    "num_tokens": 7
+  },
+  "single_word": {
+    "text": "Hello",
+    "token_ids": [
+      5365
+    ],
+    "token_ids_with_special": [
+      1,
+      5365,
+      2
+    ],
+    "tokens": [
+      "▁Hello"
+    ],
+    "num_tokens": 1
+  },
+  "empty_string": {
+    "text": "",
+    "token_ids": [],
+    "token_ids_with_special": [
+      1,
+      2
+    ],
+    "tokens": [],
+    "num_tokens": 0
+  },
+  "whitespace_only": {
+    "text": "   ",
+    "token_ids": [],
+    "token_ids_with_special": [
+      1,
+      2
+    ],
+    "tokens": [],
+    "num_tokens": 0
+  },
+  "whitespace_padding": {
+    "text": "   spaces   ",
+    "token_ids": [
+      3654
+    ],
+    "token_ids_with_special": [
+      1,
+      3654,
+      2
+    ],
+    "tokens": [
+      "▁spaces"
+    ],
+    "num_tokens": 1
+  },
+  "apostrophe": {
+    "text": "don't",
+    "token_ids": [
+      418,
+      280,
+      297
+    ],
+    "token_ids_with_special": [
+      1,
+      418,
+      280,
+      297,
+      2
+    ],
+    "tokens": [
+      "▁don",
+      "'",
+      "t"
+    ],
+    "num_tokens": 3
+  },
+  "abbreviation": {
+    "text": "U.S.A.",
+    "token_ids": [
+      543,
+      260,
+      430,
+      260,
+      558,
+      260
+    ],
+    "token_ids_with_special": [
+      1,
+      543,
+      260,
+      430,
+      260,
+      558,
+      260,
+      2
+    ],
+    "tokens": [
+      "▁U",
+      ".",
+      "S",
+      ".",
+      "A",
+      "."
+    ],
+    "num_tokens": 6
+  },
+  "email": {
+    "text": "test@email.com",
+    "token_ids": [
+      1010,
+      1683,
+      12073,
+      260,
+      549
+    ],
+    "token_ids_with_special": [
+      1,
+      1010,
+      1683,
+      12073,
+      260,
+      549,
+      2
+    ],
+    "tokens": [
+      "▁test",
+      "@",
+      "email",
+      ".",
+      "com"
+    ],
+    "num_tokens": 5
+  },
+  "url": {
+    "text": "https://example.com",
+    "token_ids": [
+      3597,
+      294,
+      320,
+      320,
+      28748,
+      260,
+      549
+    ],
+    "token_ids_with_special": [
+      1,
+      3597,
+      294,
+      320,
+      320,
+      28748,
+      260,
+      549,
+      2
+    ],
+    "tokens": [
+      "▁https",
+      ":",
+      "/",
+      "/",
+      "example",
+      ".",
+      "com"
+    ],
+    "num_tokens": 7
+  },
+  "multiple_punctuation": {
+    "text": "Hello, world! How are you?",
+    "token_ids": [
+      5365,
+      261,
+      447,
+      300,
+      577,
+      281,
+      274,
+      302
+    ],
+    "token_ids_with_special": [
+      1,
+      5365,
+      261,
+      447,
+      300,
+      577,
+      281,
+      274,
+      302,
+      2
+    ],
+    "tokens": [
+      "▁Hello",
+      ",",
+      "▁world",
+      "!",
+      "▁How",
+      "▁are",
+      "▁you",
+      "?"
+    ],
+    "num_tokens": 8
+  },
+  "contraction_sentence": {
+    "text": "It's a test.",
+    "token_ids": [
+      325,
+      280,
+      268,
+      266,
+      1010,
+      260
+    ],
+    "token_ids_with_special": [
+      1,
+      325,
+      280,
+      268,
+      266,
+      1010,
+      260,
+      2
+    ],
+    "tokens": [
+      "▁It",
+      "'",
+      "s",
+      "▁a",
+      "▁test",
+      "."
+    ],
+    "num_tokens": 6
+  },
+  "accents": {
+    "text": "Café résumé naïve",
+    "token_ids": [
+      16709,
+      53850,
+      34972
+    ],
+    "token_ids_with_special": [
+      1,
+      16709,
+      53850,
+      34972,
+      2
+    ],
+    "tokens": [
+      "▁Café",
+      "▁résumé",
+      "▁naïve"
+    ],
+    "num_tokens": 3
+  },
+  "japanese": {
+    "text": "日本語テスト",
+    "token_ids": [
+      507,
+      100868,
+      89387,
+      62105,
+      88237
+    ],
+    "token_ids_with_special": [
+      1,
+      507,
+      100868,
+      89387,
+      62105,
+      88237,
+      2
+    ],
+    "tokens": [
+      "▁",
+      "日本",
+      "語",
+      "テ",
+      "スト"
+    ],
+    "num_tokens": 5
+  },
+  "cyrillic": {
+    "text": "Привет мир",
+    "token_ids": [
+      88712,
+      71039,
+      110573
+    ],
+    "token_ids_with_special": [
+      1,
+      88712,
+      71039,
+      110573,
+      2
+    ],
+    "tokens": [
+      "▁При",
+      "вет",
+      "▁мир"
+    ],
+    "num_tokens": 3
+  },
+  "polish": {
+    "text": "Cześć świat",
+    "token_ids": [
+      716,
+      8423,
+      37409,
+      39932,
+      89083,
+      86558,
+      297
+    ],
+    "token_ids_with_special": [
+      1,
+      716,
+      8423,
+      37409,
+      39932,
+      89083,
+      86558,
+      297,
+      2
+    ],
+    "tokens": [
+      "▁C",
+      "ze",
+      "ś",
+      "ć",
+      "▁ś",
+      "wia",
+      "t"
+    ],
+    "num_tokens": 7
+  },
+  "chinese": {
+    "text": "中文测试",
+    "token_ids": [
+      507,
+      29575,
+      42728,
+      107712,
+      122521
+    ],
+    "token_ids_with_special": [
+      1,
+      507,
+      29575,
+      42728,
+      107712,
+      122521,
+      2
+    ],
+    "tokens": [
+      "▁",
+      "中",
+      "文",
+      "测",
+      "试"
+    ],
+    "num_tokens": 5
+  },
+  "p_token_only": {
+    "text": "[P]",
+    "token_ids": [
+      128003
+    ],
+    "token_ids_with_special": [
+      1,
+      128003,
+      2
+    ],
+    "tokens": [
+      "[P]"
+    ],
+    "num_tokens": 1
+  },
+  "e_token_only": {
+    "text": "[E]",
+    "token_ids": [
+      128005
+    ],
+    "token_ids_with_special": [
+      1,
+      128005,
+      2
+    ],
+    "tokens": [
+      "[E]"
+    ],
+    "num_tokens": 1
+  },
+  "schema_tokens": {
+    "text": "[P] entities ( [E] person [E] company )",
+    "token_ids": [
+      128003,
+      6967,
+      287,
+      128005,
+      604,
+      128005,
+      483,
+      1263
+    ],
+    "token_ids_with_special": [
+      1,
+      128003,
+      6967,
+      287,
+      128005,
+      604,
+      128005,
+      483,
+      1263,
+      2
+    ],
+    "tokens": [
+      "[P]",
+      "▁entities",
+      "▁(",
+      "[E]",
+      "▁person",
+      "[E]",
+      "▁company",
+      "▁)"
+    ],
+    "num_tokens": 8
+  },
+  "sep_struct": {
+    "text": "[SEP_STRUCT]",
+    "token_ids": [
+      128001
+    ],
+    "token_ids_with_special": [
+      1,
+      128001,
+      2
+    ],
+    "tokens": [
+      "[SEP_STRUCT]"
+    ],
+    "num_tokens": 1
+  },
+  "sep_text": {
+    "text": "[SEP_TEXT]",
+    "token_ids": [
+      128002
+    ],
+    "token_ids_with_special": [
+      1,
+      128002,
+      2
+    ],
+    "tokens": [
+      "[SEP_TEXT]"
+    ],
+    "num_tokens": 1
+  },
+  "cls_sep_tokens": {
+    "text": "[CLS] Hello [SEP]",
+    "token_ids": [
+      1,
+      5365,
+      2
+    ],
+    "token_ids_with_special": [
+      1,
+      1,
+      5365,
+      2,
+      2
+    ],
+    "tokens": [
+      "[CLS]",
+      "▁Hello",
+      "[SEP]"
+    ],
+    "num_tokens": 3
+  },
+  "full_schema_example": {
+    "text": "[P] entities ( [E] person ) [SEP_TEXT] Tim Cook is CEO",
+    "token_ids": [
+      128003,
+      6967,
+      287,
+      128005,
+      604,
+      1263,
+      128002,
+      4185,
+      5851,
+      269,
+      3033
+    ],
+    "token_ids_with_special": [
+      1,
+      128003,
+      6967,
+      287,
+      128005,
+      604,
+      1263,
+      128002,
+      4185,
+      5851,
+      269,
+      3033,
+      2
+    ],
+    "tokens": [
+      "[P]",
+      "▁entities",
+      "▁(",
+      "[E]",
+      "▁person",
+      "▁)",
+      "[SEP_TEXT]",
+      "▁Tim",
+      "▁Cook",
+      "▁is",
+      "▁CEO"
+    ],
+    "num_tokens": 11
+  },
+  "numbers": {
+    "text": "12345",
+    "token_ids": [
+      621,
+      28317
+    ],
+    "token_ids_with_special": [
+      1,
+      621,
+      28317,
+      2
+    ],
+    "tokens": [
+      "▁12",
+      "345"
+    ],
+    "num_tokens": 2
+  },
+  "currency": {
+    "text": "$1,234.56",
+    "token_ids": [
+      419,
+      435,
+      261,
+      28100,
+      260,
+      6290
+    ],
+    "token_ids_with_special": [
+      1,
+      419,
+      435,
+      261,
+      28100,
+      260,
+      6290,
+      2
+    ],
+    "tokens": [
+      "▁$",
+      "1",
+      ",",
+      "234",
+      ".",
+      "56"
+    ],
+    "num_tokens": 6
+  },
+  "date": {
+    "text": "2024-01-28",
+    "token_ids": [
+      29811,
+      271,
+      3085,
+      271,
+      3686
+    ],
+    "token_ids_with_special": [
+      1,
+      29811,
+      271,
+      3085,
+      271,
+      3686,
+      2
+    ],
+    "tokens": [
+      "▁2024",
+      "-",
+      "01",
+      "-",
+      "28"
+    ],
+    "num_tokens": 5
+  },
+  "decimal": {
+    "text": "3.14159",
+    "token_ids": [
+      404,
+      260,
+      2160,
+      27700
+    ],
+    "token_ids_with_special": [
+      1,
+      404,
+      260,
+      2160,
+      27700,
+      2
+    ],
+    "tokens": [
+      "▁3",
+      ".",
+      "14",
+      "159"
+    ],
+    "num_tokens": 4
+  },
+  "large_number": {
+    "text": "1,000,000",
+    "token_ids": [
+      376,
+      261,
+      528,
+      261,
+      528
+    ],
+    "token_ids_with_special": [
+      1,
+      376,
+      261,
+      528,
+      261,
+      528,
+      2
+    ],
+    "tokens": [
+      "▁1",
+      ",",
+      "000",
+      ",",
+      "000"
+    ],
+    "num_tokens": 5
+  },
+  "pangram": {
+    "text": "The quick brown fox jumps over the lazy dog.",
+    "token_ids": [
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260
+    ],
+    "token_ids_with_special": [
+      1,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      2
+    ],
+    "tokens": [
+      "▁The",
+      "▁quick",
+      "▁brown",
+      "▁fox",
+      "▁jumps",
+      "▁over",
+      "▁the",
+      "▁lazy",
+      "▁dog",
+      "."
+    ],
+    "num_tokens": 10
+  },
+  "long_text": {
+    "text": "The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. The quick brown fox jumps over the lazy dog. ",
+    "token_ids": [
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260
+    ],
+    "token_ids_with_special": [
+      1,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      279,
+      1538,
+      3258,
+      16123,
+      14929,
+      360,
+      262,
+      9118,
+      1560,
+      260,
+      2
+    ],
+    "tokens": [
+      "▁The",
+      "▁quick",
+      "▁brown",
+      "▁fox",
+      "▁jumps",
+      "▁over",
+      "▁the",
+      "▁lazy",
+      "▁dog",
+      ".",
+      "▁The",
+      "▁quick",
+      "▁brown",
+      "▁fox",
+      "▁jumps",
+      "▁over",
+      "▁the",
+      "▁lazy",
+      "▁dog",
+      ".",
+      "▁The",
+      "▁quick",
+      "▁brown",
+      "▁fox",
+      "▁jumps",
+      "▁over",
+      "▁the",
+      "▁lazy",
+      "▁dog",
+      ".",
+      "▁The",
+      "▁quick",
+      "▁brown",
+      "▁fox",
+      "▁jumps",
+      "▁over",
+      "▁the",
+      "▁lazy",
+      "▁dog",
+      ".",
+      "▁The",
+      "▁quick",
+      "▁brown",
+      "▁fox",
+      "▁jumps",
+      "▁over",
+      "▁the",
+      "▁lazy",
+      "▁dog",
+      ".",
+      "▁The",
+      "▁quick",
+      "▁brown",
+      "▁fox",
+      "▁jumps",
+      "▁over",
+      "▁the",
+      "▁lazy",
+      "▁dog",
+      ".",
+      "▁The",
+      "▁quick",
+      "▁brown",
+      "▁fox",
+      "▁jumps",
+      "▁over",
+      "▁the",
+      "▁lazy",
+      "▁dog",
+      ".",
+      "▁The",
+      "▁quick",
+      "▁brown",
+      "▁fox",
+      "▁jumps",
+      "▁over",
+      "▁the",
+      "▁lazy",
+      "▁dog",
+      ".",
+      "▁The",
+      "▁quick",
+      "▁brown",
+      "▁fox",
+      "▁jumps",
+      "▁over",
+      "▁the",
+      "▁lazy",
+      "▁dog",
+      ".",
+      "▁The",
+      "▁quick",
+      "▁brown",
+      "▁fox",
+      "▁jumps",
+      "▁over",
+      "▁the",
+      "▁lazy",
+      "▁dog",
+      "."
+    ],
+    "num_tokens": 100
+  },
+  "mixed_content": {
+    "text": "John earned $50,000 in 2024.",
+    "token_ids": [
+      918,
+      3295,
+      419,
+      1794,
+      261,
+      528,
+      267,
+      29811,
+      260
+    ],
+    "token_ids_with_special": [
+      1,
+      918,
+      3295,
+      419,
+      1794,
+      261,
+      528,
+      267,
+      29811,
+      260,
+      2
+    ],
+    "tokens": [
+      "▁John",
+      "▁earned",
+      "▁$",
+      "50",
+      ",",
+      "000",
+      "▁in",
+      "▁2024",
+      "."
+    ],
+    "num_tokens": 9
+  },
+  "time": {
+    "text": "The meeting is at 3:30 PM.",
+    "token_ids": [
+      279,
+      1122,
+      269,
+      288,
+      404,
+      294,
+      1076,
+      2839,
+      260
+    ],
+    "token_ids_with_special": [
+      1,
+      279,
+      1122,
+      269,
+      288,
+      404,
+      294,
+      1076,
+      2839,
+      260,
+      2
+    ],
+    "tokens": [
+      "▁The",
+      "▁meeting",
+      "▁is",
+      "▁at",
+      "▁3",
+      ":",
+      "30",
+      "▁PM",
+      "."
+    ],
+    "num_tokens": 9
+  },
+  "contact_info": {
+    "text": "Email me at test@example.com or call 555-1234.",
+    "token_ids": [
+      6331,
+      351,
+      288,
+      1010,
+      1683,
+      28748,
+      260,
+      549,
+      289,
+      660,
+      36544,
+      271,
+      66919,
+      260
+    ],
+    "token_ids_with_special": [
+      1,
+      6331,
+      351,
+      288,
+      1010,
+      1683,
+      28748,
+      260,
+      549,
+      289,
+      660,
+      36544,
+      271,
+      66919,
+      260,
+      2
+    ],
+    "tokens": [
+      "▁Email",
+      "▁me",
+      "▁at",
+      "▁test",
+      "@",
+      "example",
+      ".",
+      "com",
+      "▁or",
+      "▁call",
+      "▁555",
+      "-",
+      "1234",
+      "."
+    ],
+    "num_tokens": 14
+  },
+  "company_person": {
+    "text": "Apple Inc. was founded by Steve Jobs.",
+    "token_ids": [
+      2013,
+      1326,
+      260,
+      284,
+      3679,
+      293,
+      3299,
+      9167,
+      260
+    ],
+    "token_ids_with_special": [
+      1,
+      2013,
+      1326,
+      260,
+      284,
+      3679,
+      293,
+      3299,
+      9167,
+      260,
+      2
+    ],
+    "tokens": [
+      "▁Apple",
+      "▁Inc",
+      ".",
+      "▁was",
+      "▁founded",
+      "▁by",
+      "▁Steve",
+      "▁Jobs",
+      "."
+    ],
+    "num_tokens": 9
+  },
+  "locations": {
+    "text": "New York City is in the United States.",
+    "token_ids": [
+      485,
+      920,
+      844,
+      269,
+      267,
+      262,
+      780,
+      1017,
+      260
+    ],
+    "token_ids_with_special": [
+      1,
+      485,
+      920,
+      844,
+      269,
+      267,
+      262,
+      780,
+      1017,
+      260,
+      2
+    ],
+    "tokens": [
+      "▁New",
+      "▁York",
+      "▁City",
+      "▁is",
+      "▁in",
+      "▁the",
+      "▁United",
+      "▁States",
+      "."
+    ],
+    "num_tokens": 9
+  },
+  "measurement": {
+    "text": "The Eiffel Tower is 330 meters tall.",
+    "token_ids": [
+      279,
+      36726,
+      6962,
+      269,
+      18061,
+      5580,
+      4180,
+      260
+    ],
+    "token_ids_with_special": [
+      1,
+      279,
+      36726,
+      6962,
+      269,
+      18061,
+      5580,
+      4180,
+      260,
+      2
+    ],
+    "tokens": [
+      "▁The",
+      "▁Eiffel",
+      "▁Tower",
+      "▁is",
+      "▁330",
+      "▁meters",
+      "▁tall",
+      "."
+    ],
+    "num_tokens": 8
+  },
+  "_special_token_ids": {
+    "pad_token_id": 0,
+    "cls_token_id": 1,
+    "sep_token_id": 2,
+    "unk_token_id": 3,
+    "mask_token_id": 128000,
+    "vocab_size": 128000
+  },
+  "_gliner2_special_tokens": {
+    "[P]": 128003,
+    "[E]": 128005,
+    "[C]": 128004,
+    "[R]": 128006,
+    "[L]": 128007,
+    "[SEP_STRUCT]": 128001,
+    "[SEP_TEXT]": 128002,
+    "[EXAMPLE]": 128008,
+    "[OUTPUT]": 128009,
+    "[DESCRIPTION]": 128010
+  }
+}
