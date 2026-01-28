@@ -359,10 +359,14 @@ public class GLiNER2 {
 
             // Extract schema embeddings per-schema (grouped by schema_idx in mapping)
             // Only special tokens ([P], [C], [E], [R], [L]) contribute embeddings
+            // Get input IDs for this sample (needed for token string lookup)
+            let sampleInputIds = batch.getInputIds(for: sampleIdx)
+
             let schemaEmbsList = extractSchemaEmbeddingsPerSchema(
                 hiddenStates: sampleHidden,
                 mappedIndices: mappedIndices,
-                schemaTokensList: schemaTokensList
+                schemaTokensList: schemaTokensList,
+                inputIds: sampleInputIds
             )
 
             // Compute span info if we have any span tasks
@@ -483,52 +487,39 @@ public class GLiNER2 {
     /// Extract schema embeddings grouped by schema index.
     /// Returns a list of embedding arrays, one per schema.
     /// Only special tokens ([P], [C], [E], [R], [L]) contribute embeddings.
+    ///
+    /// This matches Python's approach in processor.py:1018-1025:
+    /// ```python
+    /// for j, tid in enumerate(ids):
+    ///     seg_type, orig_idx, schema_idx = mappings[j]
+    ///     emb = embs[j]
+    ///     if seg_type == "schema":
+    ///         tok = self.tokenizer.convert_ids_to_tokens(tid)
+    ///         if tok in special_set:
+    ///             schema_embs[schema_idx].append(emb)
+    /// ```
     private func extractSchemaEmbeddingsPerSchema(
         hiddenStates: MLXArray,
         mappedIndices: [MappedIndex],
-        schemaTokensList: [[String]]
+        schemaTokensList: [[String]],
+        inputIds: [Int]
     ) -> [[MLXArray]] {
         let numSchemas = schemaTokensList.count
-
-        // Build a map of origIdx -> whether it's a special token
-        // origIdx in MappedIndex refers to the position in the combined token list
-        // Combined format: schema0_tokens + [SEP_STRUCT] + schema1_tokens + [SEP_STRUCT] + ...
-        // (last SEP_STRUCT is removed, then [SEP_TEXT] is added)
-        var specialTokenIndices: Set<Int> = []
-        var currentOffset = 0
-
-        for (schemaIdx, schemaTokens) in schemaTokensList.enumerated() {
-            for (localIdx, token) in schemaTokens.enumerated() {
-                if Self.specialMarkerTokens.contains(token) {
-                    specialTokenIndices.insert(currentOffset + localIdx)
-                }
-            }
-            currentOffset += schemaTokens.count
-            // Add 1 for [SEP_STRUCT] between schemas (except after last schema)
-            if schemaIdx < schemaTokensList.count - 1 {
-                currentOffset += 1
-            }
-        }
-
-        // Initialize result array
         var schemaEmbs: [[MLXArray]] = Array(repeating: [], count: numSchemas)
 
-        // Track which original index we're at (accounting for subword tokenization)
-        // Since each token may produce multiple subword tokens, we use origIdx from mapping
-        var processedOrigIndices: Set<Int> = []
-
+        // Match Python: iterate through all positions and check actual token string
         for (idx, mapping) in mappedIndices.enumerated() {
-            if mapping.segmentType == .schema {
-                let schemaIdx = mapping.schemaIndex
-                let origIdx = mapping.originalIndex
-                guard schemaIdx >= 0 && schemaIdx < numSchemas else { continue }
+            guard mapping.segmentType == .schema else { continue }
 
-                // Only include if this is a special marker token and we haven't processed it yet
-                // (take first subword for multi-subword tokens)
-                if specialTokenIndices.contains(origIdx) && !processedOrigIndices.contains(origIdx) {
-                    schemaEmbs[schemaIdx].append(hiddenStates[idx])
-                    processedOrigIndices.insert(origIdx)
-                }
+            let schemaIdx = mapping.schemaIndex
+            guard schemaIdx >= 0 && schemaIdx < numSchemas else { continue }
+            guard idx < inputIds.count else { continue }
+
+            // Get actual token string (matching Python's convert_ids_to_tokens)
+            let tokenId = inputIds[idx]
+            if let tokenStr = processor.tokenizer.idToToken(tokenId),
+               Self.specialMarkerTokens.contains(tokenStr) {
+                schemaEmbs[schemaIdx].append(hiddenStates[idx])
             }
         }
 

@@ -123,6 +123,26 @@ public struct PreprocessedBatch: Sendable {
         count == 0
     }
 
+    /// Get input IDs for a specific sample (unpadded)
+    ///
+    /// This is needed for token-by-token lookup during schema embedding extraction,
+    /// matching Python's approach of using convert_ids_to_tokens(tid) to check
+    /// if each token is a special marker token.
+    public func getInputIds(for sampleIndex: Int) -> [Int] {
+        guard sampleIndex < originalLengths.count else { return [] }
+        let seqLen = originalLengths[sampleIndex]
+
+        // Extract row from MLXArray and convert to [Int]
+        let row = inputIds[sampleIndex, 0..<seqLen]
+        MLX.eval(row)
+
+        var ids: [Int] = []
+        for i in 0..<seqLen {
+            ids.append(Int(row[i].item(Int32.self)))
+        }
+        return ids
+    }
+
     /// Move tensors to specific device/stream
     public func using(_ device: Device) -> PreprocessedBatch {
         return PreprocessedBatch(

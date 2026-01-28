@@ -292,21 +292,22 @@ public class SchemaTransformer {
         // Process entities
         if let entities = schema["entities"] as? [String: Any] {
             let entityNames = Array(entities.keys)
-            guard !entityNames.isEmpty else { return results }
+            // Only process if there are entity names (don't early return - other schemas may follow)
+            if !entityNames.isEmpty {
+                let schemaTokens = buildSchemaTokens(
+                    parent: "entities",
+                    fields: entityNames,
+                    childPrefix: SpecialTokens.eToken
+                )
 
-            let schemaTokens = buildSchemaTokens(
-                parent: "entities",
-                fields: entityNames,
-                childPrefix: SpecialTokens.eToken
-            )
+                let output: [Any] = [1, []]
 
-            let output: [Any] = [1, []]
-
-            results.append(SchemaResult(
-                taskType: "entities",
-                schemaTokens: schemaTokens,
-                output: output
-            ))
+                results.append(SchemaResult(
+                    taskType: "entities",
+                    schemaTokens: schemaTokens,
+                    output: output
+                ))
+            }
         }
 
         // Process relations

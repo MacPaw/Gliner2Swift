@@ -103,9 +103,6 @@ public final class UnigramTokenizer: @unchecked Sendable {
             idToToken[idx] = token
         }
 
-        self.vocab = vocab
-        self.idToToken = idToToken
-
         // Parse added_tokens for special tokens
         var specialTokenSet: Set<String> = []
         var tokenToId: [String: Int] = [:]
@@ -121,6 +118,14 @@ public final class UnigramTokenizer: @unchecked Sendable {
             }
         }
 
+        // Add reverse mapping for special tokens (needed for idToToken lookup)
+        // This matches Python's convert_ids_to_tokens which includes special tokens
+        for (content, id) in tokenToId {
+            idToToken[id] = content
+        }
+
+        self.vocab = vocab
+        self.idToToken = idToToken
         self.specialTokens = specialTokenSet
         self.specialTokenToId = tokenToId
 
