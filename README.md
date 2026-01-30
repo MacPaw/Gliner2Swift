@@ -60,7 +60,6 @@ for entity in entities {
 | Model | Parameters | HuggingFace ID |
 |-------|------------|----------------|
 | Base | 205M | `fastino/gliner2-base-v1` |
-| Large | 340M | `fastino/gliner2-large-v1` |
 
 ## API Reference
 
@@ -107,9 +106,6 @@ On Apple Silicon (M1/M2/M3):
 - Model loading: ~2 seconds
 - Inference: ~50ms per sentence (varies by length)
 
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
