@@ -266,15 +266,22 @@ public class SchemaTransformer {
 
         // Process JSON structures
         if let jsonStructures = schema["json_structures"] as? [[String: [String: Any]]] {
+            // Get field descriptions for all structures
+            let jsonDescriptions = schema["json_descriptions"] as? [String: [String: String]] ?? [:]
+
             for structure in jsonStructures {
                 for (parent, fields) in structure {
                     let fieldNames = Array(fields.keys)
                     guard !fieldNames.isEmpty else { continue }
 
+                    // Get descriptions for this structure's fields
+                    let fieldDescriptions = jsonDescriptions[parent]
+
                     let schemaTokens = buildSchemaTokens(
                         parent: parent,
                         fields: fieldNames,
-                        childPrefix: SpecialTokens.cToken
+                        childPrefix: SpecialTokens.cToken,
+                        labelDescriptions: fieldDescriptions
                     )
 
                     // Build structure labels (simplified for now)
@@ -294,10 +301,14 @@ public class SchemaTransformer {
             let entityNames = Array(entities.keys)
             // Only process if there are entity names (don't early return - other schemas may follow)
             if !entityNames.isEmpty {
+                // Get entity descriptions if available
+                let entityDescriptions = schema["entity_descriptions"] as? [String: String]
+
                 let schemaTokens = buildSchemaTokens(
                     parent: "entities",
                     fields: entityNames,
-                    childPrefix: SpecialTokens.eToken
+                    childPrefix: SpecialTokens.eToken,
+                    labelDescriptions: entityDescriptions
                 )
 
                 let output: [Any] = [1, []]

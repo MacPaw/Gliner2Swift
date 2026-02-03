@@ -142,6 +142,41 @@ final class GLiNER2Tests: XCTestCase {
         XCTAssertNotNil(built["entities"])
         XCTAssertNotNil(built["classifications"])
     }
+
+    func testSchemaBuilderEntitiesWithDescriptions() throws {
+        let schema = Schema()
+            .entities([
+                "person": "A human being's name",
+                "company": "A business organization"
+            ])
+
+        let built = schema.build()
+        let entities = built["entities"] as? [String: Any]
+        let descriptions = built["entity_descriptions"] as? [String: String]
+
+        XCTAssertNotNil(entities)
+        XCTAssertTrue(entities?.keys.contains("person") ?? false)
+        XCTAssertTrue(entities?.keys.contains("company") ?? false)
+
+        XCTAssertNotNil(descriptions)
+        XCTAssertEqual(descriptions?["person"], "A human being's name")
+        XCTAssertEqual(descriptions?["company"], "A business organization")
+    }
+
+    func testSchemaBuilderEntitiesWithDescriptionsChaining() throws {
+        let schema = Schema()
+            .entities([
+                "person": "A human being's name",
+                "company": "A business organization"
+            ])
+            .classification(task: "sentiment", labels: ["positive", "negative"])
+
+        let built = schema.build()
+
+        XCTAssertNotNil(built["entities"])
+        XCTAssertNotNil(built["entity_descriptions"])
+        XCTAssertNotNil(built["classifications"])
+    }
 }
 
 // MARK: - MLP Tests
@@ -319,5 +354,199 @@ final class SpanDecoderTests: XCTestCase {
         XCTAssertEqual(first?["text"] as? String, "Apple")
         XCTAssertEqual(first?["start"] as? Int, 0)
         XCTAssertEqual(first?["end"] as? Int, 5)
+    }
+}
+
+// MARK: - Structure Field Descriptions Tests
+
+final class StructureDescriptionsTests: XCTestCase {
+
+    func testStructureBuilderWithFieldDescriptions() throws {
+        let schema = Schema()
+            .structure("person")
+            .field("name", description: "The person's full name")
+            .field("age", description: "The person's age in years")
+            .done()
+
+        let built = schema.build()
+
+        // Check structure was added
+        let structures = built["json_structures"] as? [[String: Any]]
+        XCTAssertNotNil(structures)
+        XCTAssertEqual(structures?.count, 1)
+
+        // Check descriptions were stored
+        let jsonDescriptions = built["json_descriptions"] as? [String: [String: String]]
+        XCTAssertNotNil(jsonDescriptions)
+        XCTAssertEqual(jsonDescriptions?["person"]?["name"], "The person's full name")
+        XCTAssertEqual(jsonDescriptions?["person"]?["age"], "The person's age in years")
+    }
+
+    func testStructureBuilderWithoutDescriptions() throws {
+        let schema = Schema()
+            .structure("person")
+            .field("name")
+            .field("age")
+            .done()
+
+        let built = schema.build()
+
+        // Check structure was added
+        let structures = built["json_structures"] as? [[String: Any]]
+        XCTAssertNotNil(structures)
+
+        // Check no descriptions were stored (empty or nil)
+        let jsonDescriptions = built["json_descriptions"] as? [String: [String: String]]
+        XCTAssertTrue(jsonDescriptions == nil || jsonDescriptions?.isEmpty == true)
+    }
+
+    func testStructureBuilderMixedDescriptions() throws {
+        // Some fields have descriptions, some don't
+        let schema = Schema()
+            .structure("person")
+            .field("name", description: "The person's full name")
+            .field("age")  // No description
+            .field("email", description: "Contact email address")
+            .done()
+
+        let built = schema.build()
+
+        let jsonDescriptions = built["json_descriptions"] as? [String: [String: String]]
+        XCTAssertNotNil(jsonDescriptions)
+        XCTAssertEqual(jsonDescriptions?["person"]?["name"], "The person's full name")
+        XCTAssertEqual(jsonDescriptions?["person"]?["email"], "Contact email address")
+        XCTAssertNil(jsonDescriptions?["person"]?["age"])
+    }
+
+    func testStructureTokensIncludeDescriptions() throws {
+        // Skip if tokenizer not available
+        let tokenizerPath = URL(fileURLWithPath: "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/gliner2-base-v1")
+        guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
+            throw XCTSkip("Tokenizer not available at \(tokenizerPath.path)")
+        }
+
+        let processor = try SchemaTransformer.createFromLocalDirectory(directoryUrl: tokenizerPath)
+
+        // Build schema with field descriptions
+        let schema = Schema()
+            .structure("person")
+            .field("name", description: "The person's full name")
+            .field("age", description: "The person's age")
+            .done()
+        let schemaDict = schema.build()
+
+        // Transform text
+        let record = processor.transform(text: "John is 30 years old.", schema: schemaDict)
+
+        // Verify schema tokens include descriptions
+        let schemaTokensList = record.schemaTokensList
+        XCTAssertEqual(schemaTokensList.count, 1, "Should have exactly 1 schema (structure)")
+
+        let structureSchemaTokens = schemaTokensList[0]
+        let joined = structureSchemaTokens.joined(separator: " ")
+
+        // Check that [DESCRIPTION] token is present
+        XCTAssertTrue(joined.contains("[DESCRIPTION]"), "Schema tokens should contain [DESCRIPTION] token")
+
+        // Check that descriptions are included
+        XCTAssertTrue(joined.contains("name: The person's full name") || joined.contains("age: The person's age"),
+                      "Schema tokens should contain at least one field description")
+    }
+
+    func testStructureTokensWithoutDescriptions() throws {
+        // Skip if tokenizer not available
+        let tokenizerPath = URL(fileURLWithPath: "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/gliner2-base-v1")
+        guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
+            throw XCTSkip("Tokenizer not available at \(tokenizerPath.path)")
+        }
+
+        let processor = try SchemaTransformer.createFromLocalDirectory(directoryUrl: tokenizerPath)
+
+        // Build schema without field descriptions
+        let schema = Schema()
+            .structure("person")
+            .field("name")
+            .field("age")
+            .done()
+        let schemaDict = schema.build()
+
+        // Transform text
+        let record = processor.transform(text: "John is 30 years old.", schema: schemaDict)
+
+        // Verify schema tokens do NOT include descriptions
+        let schemaTokensList = record.schemaTokensList
+        let structureSchemaTokens = schemaTokensList[0]
+        let joined = structureSchemaTokens.joined(separator: " ")
+
+        // Check that [DESCRIPTION] token is NOT present
+        XCTAssertFalse(joined.contains("[DESCRIPTION]"), "Schema tokens should NOT contain [DESCRIPTION] token when no descriptions provided")
+    }
+}
+
+// MARK: - Entity Descriptions Tests
+
+final class EntityDescriptionsTests: XCTestCase {
+
+    func testSchemaTokensIncludeDescriptions() throws {
+        // Skip if tokenizer not available
+        let tokenizerPath = URL(fileURLWithPath: "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/gliner2-base-v1")
+        guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
+            throw XCTSkip("Tokenizer not available at \(tokenizerPath.path)")
+        }
+
+        let processor = try SchemaTransformer.createFromLocalDirectory(directoryUrl: tokenizerPath)
+
+        // Build schema with descriptions
+        let schema = Schema()
+            .entities([
+                "person": "A human being's name",
+                "company": "A business organization"
+            ])
+        let schemaDict = schema.build()
+
+        // Transform text
+        let record = processor.transform(text: "Tim Cook is CEO of Apple.", schema: schemaDict)
+
+        // Verify schema tokens include descriptions
+        let schemaTokensList = record.schemaTokensList
+        XCTAssertEqual(schemaTokensList.count, 1, "Should have exactly 1 schema (entities)")
+
+        let entitySchemaTokens = schemaTokensList[0]
+        let joined = entitySchemaTokens.joined(separator: " ")
+
+        // Check that [DESCRIPTION] token is present
+        XCTAssertTrue(joined.contains("[DESCRIPTION]"), "Schema tokens should contain [DESCRIPTION] token")
+
+        // Check that descriptions are included
+        XCTAssertTrue(joined.contains("person: A human being's name") || joined.contains("company: A business organization"),
+                      "Schema tokens should contain at least one description")
+    }
+
+    func testSchemaTokensWithoutDescriptions() throws {
+        // Skip if tokenizer not available
+        let tokenizerPath = URL(fileURLWithPath: "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/gliner2-base-v1")
+        guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
+            throw XCTSkip("Tokenizer not available at \(tokenizerPath.path)")
+        }
+
+        let processor = try SchemaTransformer.createFromLocalDirectory(directoryUrl: tokenizerPath)
+
+        // Build schema without descriptions (using simple array)
+        let schema = Schema()
+            .entities(["person", "company"])
+        let schemaDict = schema.build()
+
+        // Transform text
+        let record = processor.transform(text: "Tim Cook is CEO of Apple.", schema: schemaDict)
+
+        // Verify schema tokens do NOT include descriptions
+        let schemaTokensList = record.schemaTokensList
+        XCTAssertEqual(schemaTokensList.count, 1, "Should have exactly 1 schema (entities)")
+
+        let entitySchemaTokens = schemaTokensList[0]
+        let joined = entitySchemaTokens.joined(separator: " ")
+
+        // Check that [DESCRIPTION] token is NOT present
+        XCTAssertFalse(joined.contains("[DESCRIPTION]"), "Schema tokens should NOT contain [DESCRIPTION] token when no descriptions provided")
     }
 }

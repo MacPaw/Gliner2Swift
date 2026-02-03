@@ -1033,6 +1033,29 @@ public class Schema {
         return self
     }
 
+    /// Add entity extraction task with descriptions
+    ///
+    /// - Parameter typesWithDescriptions: Dictionary mapping entity type names to their descriptions
+    /// - Returns: Schema for fluent chaining
+    ///
+    /// Example:
+    /// ```swift
+    /// let schema = model.createSchema().entities([
+    ///     "person": "A human being's name",
+    ///     "company": "A business organization"
+    /// ])
+    /// ```
+    @discardableResult
+    public func entities(_ typesWithDescriptions: [String: String]) -> Schema {
+        var entitiesDict = internalSchemaDict["entities"] as? [String: Any] ?? [:]
+        for entityType in typesWithDescriptions.keys {
+            entitiesDict[entityType] = ""
+        }
+        internalSchemaDict["entities"] = entitiesDict
+        internalSchemaDict["entity_descriptions"] = typesWithDescriptions
+        return self
+    }
+
     /// Add classification task
     @discardableResult
     public func classification(
@@ -1081,6 +1104,7 @@ public class StructureBuilder {
     private let schema: Schema
     private let name: String
     private var fields: [String: Any] = [:]
+    private var descriptions: [String: String] = [:]
 
     init(schema: Schema, name: String) {
         self.schema = schema
@@ -1088,6 +1112,13 @@ public class StructureBuilder {
     }
 
     /// Add a field to the structure
+    ///
+    /// - Parameters:
+    ///   - fieldName: Name of the field
+    ///   - dtype: Data type ("list" or "str")
+    ///   - choices: Optional list of choices for classification fields
+    ///   - description: Optional description for the field (used in schema tokens)
+    ///   - threshold: Optional confidence threshold for this field
     @discardableResult
     public func field(
         _ fieldName: String,
@@ -1101,6 +1132,12 @@ public class StructureBuilder {
         } else {
             fields[fieldName] = ""
         }
+
+        // Store description if provided
+        if let description = description {
+            descriptions[fieldName] = description
+        }
+
         return self
     }
 
@@ -1110,6 +1147,14 @@ public class StructureBuilder {
         var structures = schema.internalSchemaDict["json_structures"] as? [[String: Any]] ?? []
         structures.append([name: fields])
         schema.internalSchemaDict["json_structures"] = structures
+
+        // Store descriptions if any were provided
+        if !descriptions.isEmpty {
+            var jsonDescriptions = schema.internalSchemaDict["json_descriptions"] as? [String: [String: String]] ?? [:]
+            jsonDescriptions[name] = descriptions
+            schema.internalSchemaDict["json_descriptions"] = jsonDescriptions
+        }
+
         return schema
     }
 
