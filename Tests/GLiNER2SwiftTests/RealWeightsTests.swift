@@ -42,8 +42,7 @@ final class RealWeightsTests: XCTestCase {
         let fm = FileManager.default
         XCTAssertTrue(fm.fileExists(atPath: Self.weightsPath), "Weights directory should exist at \(Self.weightsPath)")
         XCTAssertTrue(fm.fileExists(atPath: "\(Self.weightsPath)/config.json"), "config.json should exist")
-        XCTAssertTrue(fm.fileExists(atPath: "\(Self.weightsPath)/gliner2_weights.safetensors"), "gliner2_weights.safetensors should exist")
-        XCTAssertTrue(fm.fileExists(atPath: "\(Self.weightsPath)/encoder_weights.safetensors"), "encoder_weights.safetensors should exist")
+        XCTAssertTrue(fm.fileExists(atPath: "\(Self.weightsPath)/model.safetensors"), "model.safetensors should exist")
         XCTAssertTrue(fm.fileExists(atPath: "\(Self.weightsPath)/tokenizer.json"), "tokenizer.json should exist")
     }
 
@@ -58,7 +57,7 @@ final class RealWeightsTests: XCTestCase {
 
     /// Test SafeTensors header parsing without creating MLX arrays
     func testSafeTensorsHeaderParsing() throws {
-        let modelWeightsUrl = URL(fileURLWithPath: "\(Self.weightsPath)/gliner2_weights.safetensors")
+        let modelWeightsUrl = URL(fileURLWithPath: "\(Self.weightsPath)/model.safetensors")
         let data = try Data(contentsOf: modelWeightsUrl)
 
         // Parse header size
@@ -75,19 +74,30 @@ final class RealWeightsTests: XCTestCase {
         let headerData = data[8..<(8 + Int(headerSize))]
         let headerJson = try JSONSerialization.jsonObject(with: headerData) as! [String: Any]
 
-        // Verify expected keys exist (using camelCase keys from conversion)
-        let expectedKeys = [
+        // Verify expected keys exist (using camelCase keys from conversion for model weights)
+        let expectedModelKeys = [
             "classifier.layers.0.weight",
             "countEmbed.posEmbedding.weight",
             "countEmbed.gru.weightIH",
             "spanRep.spanRepLayer.projectStart.0.weight"
         ]
 
-        for key in expectedKeys {
-            XCTAssertNotNil(headerJson[key], "Weight key '\(key)' should exist in safetensors")
+        // Verify expected encoder keys exist
+        let expectedEncoderKeys = [
+            "encoder.embeddings.word_embeddings.weight",
+            "encoder.encoder.layer.0.attention.self.query_proj.weight",
+            "encoder.encoder.rel_embeddings.weight"
+        ]
+
+        for key in expectedModelKeys {
+            XCTAssertNotNil(headerJson[key], "Model weight key '\(key)' should exist in combined safetensors")
         }
 
-        print("SafeTensors header contains \(headerJson.count - 1) weights (excluding __metadata__)")
+        for key in expectedEncoderKeys {
+            XCTAssertNotNil(headerJson[key], "Encoder weight key '\(key)' should exist in combined safetensors")
+        }
+
+        print("Combined SafeTensors header contains \(headerJson.count - 1) weights (excluding __metadata__)")
     }
 
     func testWeightMappingFileExists() throws {
@@ -194,16 +204,16 @@ final class RealWeightsTests: XCTestCase {
         print("With special tokens: \(ids)")
     }
 
-    func testLoadGLiNER2Weights() throws {
+    func testLoadCombinedWeights() throws {
         try skipIfMLXUnavailable()
 
-        // Test that we can load the model weights without crashing
-        let modelWeightsUrl = URL(fileURLWithPath: "\(Self.weightsPath)/gliner2_weights.safetensors")
+        // Test that we can load the combined model weights without crashing
+        let modelWeightsUrl = URL(fileURLWithPath: "\(Self.weightsPath)/model.safetensors")
 
         // Load SafeTensors
         let weights = try SafeTensorsLoader.load(from: modelWeightsUrl)
 
-        // Verify key weights exist (using camelCase keys from converted weights)
+        // Verify key model weights exist (using camelCase keys from converted weights)
         XCTAssertNotNil(weights["classifier.layers.0.weight"], "classifier.layers.0.weight should exist")
         XCTAssertNotNil(weights["classifier.layers.1.weight"], "classifier.layers.1.weight should exist")
         XCTAssertNotNil(weights["countPred.layers.0.weight"], "countPred.layers.0.weight should exist")
@@ -211,22 +221,7 @@ final class RealWeightsTests: XCTestCase {
         XCTAssertNotNil(weights["countEmbed.gru.weightIH"], "countEmbed.gru.weightIH should exist")
         XCTAssertNotNil(weights["spanRep.spanRepLayer.projectStart.0.weight"], "spanRep.spanRepLayer.projectStart.0.weight should exist")
 
-        // Print all keys for debugging
-        print("GLiNER2 weight keys (\(weights.count) total):")
-        for key in weights.keys.sorted().prefix(20) {
-            print("  - \(key)")
-        }
-    }
-
-    func testLoadEncoderWeights() throws {
-        try skipIfMLXUnavailable()
-
-        // Test that we can load encoder weights
-        let encoderWeightsUrl = URL(fileURLWithPath: "\(Self.weightsPath)/encoder_weights.safetensors")
-
-        let weights = try SafeTensorsLoader.load(from: encoderWeightsUrl)
-
-        // Verify key encoder weights exist
+        // Verify key encoder weights exist in combined file
         XCTAssertNotNil(weights["encoder.embeddings.word_embeddings.weight"], "word_embeddings should exist")
         XCTAssertNotNil(weights["encoder.encoder.layer.0.attention.self.query_proj.weight"], "layer 0 query_proj should exist")
         XCTAssertNotNil(weights["encoder.encoder.rel_embeddings.weight"], "rel_embeddings should exist")
@@ -238,7 +233,13 @@ final class RealWeightsTests: XCTestCase {
             XCTAssertEqual(shape[1], 768, "Hidden size should be 768")
         }
 
-        print("Encoder weight keys (\(weights.count) total)")
+        // Print summary
+        let modelKeys = weights.keys.filter { !$0.hasPrefix("encoder.") }
+        let encoderKeys = weights.keys.filter { $0.hasPrefix("encoder.") }
+        print("Combined weights file contains:")
+        print("  - \(modelKeys.count) model weight keys")
+        print("  - \(encoderKeys.count) encoder weight keys")
+        print("  - \(weights.count) total weight keys")
     }
 
     func testInitializeExtractorWithWeights() throws {
@@ -251,12 +252,11 @@ final class RealWeightsTests: XCTestCase {
         // Create extractor
         let extractor = Extractor(config: config)
 
-        // Load model weights
-        let modelWeightsUrl = URL(fileURLWithPath: "\(Self.weightsPath)/gliner2_weights.safetensors")
-        let modelWeights = try SafeTensorsLoader.load(from: modelWeightsUrl)
+        // Load combined model weights
+        let modelWeightsUrl = URL(fileURLWithPath: "\(Self.weightsPath)/model.safetensors")
 
-        // Load weights into model - this tests weight loading functions
-        extractor.loadModelWeights(modelWeights)
+        // Load all weights from single file
+        try extractor.loadWeights(from: modelWeightsUrl)
 
         // Verify classifier weights were loaded (not random)
         // We check that the weights are not all zeros
@@ -265,7 +265,13 @@ final class RealWeightsTests: XCTestCase {
         MLX.eval(weightSum)
         XCTAssertGreaterThan(Float(weightSum.item(Float32.self)), 0.0, "Classifier weights should not be all zeros")
 
-        print("Extractor initialized and weights loaded successfully")
+        // Verify encoder weights were loaded
+        let embWeight = extractor.encoder.embeddings.wordEmbeddings.weight
+        MLX.eval(embWeight)
+        XCTAssertEqual(embWeight.shape[0], 128011, "Vocab size should be 128011")
+        XCTAssertEqual(embWeight.shape[1], 768, "Hidden size should be 768")
+
+        print("Extractor initialized and weights loaded successfully from combined file")
     }
 
     // MARK: - Inference Tests
@@ -442,8 +448,8 @@ final class RealWeightsTests: XCTestCase {
         print("SpanMarkerV0 WEIGHT LOADING VERIFICATION")
         print(String(repeating: "=", count: 70))
 
-        // Load weights file
-        let modelWeightsUrl = URL(fileURLWithPath: "\(Self.weightsPath)/gliner2_weights.safetensors")
+        // Load combined weights file
+        let modelWeightsUrl = URL(fileURLWithPath: "\(Self.weightsPath)/model.safetensors")
         let weights = try SafeTensorsLoader.load(from: modelWeightsUrl)
 
         // Check that all expected SpanMarkerV0 keys exist
@@ -1460,6 +1466,807 @@ final class RealWeightsTests: XCTestCase {
             return dict["text"] as? String
         }
         return instance[field] as? String
+    }
+
+    // MARK: - Parity Tests (Python vs Swift)
+
+    /// Path to parity fixtures generated by Python
+    static let parityFixturesPath = "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/Tests/GLiNER2SwiftTests/Fixtures/parity"
+
+    /// Load Python result fixture
+    private func loadParityResult(_ name: String) throws -> [String: Any] {
+        let url = URL(fileURLWithPath: "\(Self.parityFixturesPath)/\(name)_result.json")
+        let data = try Data(contentsOf: url)
+        return try JSONSerialization.jsonObject(with: data) as! [String: Any]
+    }
+
+    /// Load Python metadata fixture
+    private func loadParityMetadata(_ name: String) throws -> [String: Any] {
+        let url = URL(fileURLWithPath: "\(Self.parityFixturesPath)/\(name)_metadata.json")
+        let data = try Data(contentsOf: url)
+        return try JSONSerialization.jsonObject(with: data) as! [String: Any]
+    }
+
+    /// Extract entity texts from result for comparison
+    private func extractEntityTexts(_ result: [String: Any], entityType: String) -> Set<String> {
+        var texts: Set<String> = []
+
+        // Handle nested "entities" key
+        let entitiesDict: [String: Any]
+        if let nested = result["entities"] as? [String: Any] {
+            entitiesDict = nested
+        } else {
+            entitiesDict = result
+        }
+
+        if let entities = entitiesDict[entityType] as? [[String: Any]] {
+            for entity in entities {
+                if let text = entity["text"] as? String {
+                    texts.insert(text)
+                }
+            }
+        } else if let entities = entitiesDict[entityType] as? [String] {
+            texts = Set(entities)
+        }
+
+        return texts
+    }
+
+    /// Extract classification label from result
+    private func extractLabel(_ result: [String: Any], task: String) -> String? {
+        if let taskResult = result[task] as? [String: Any] {
+            return taskResult["label"] as? String
+        }
+        return result[task] as? String
+    }
+
+    // MARK: - Entity Extraction Parity Tests
+
+    /// Test: Multiple people in same sentence
+    func testParityEntityMultiplePeople() async throws {
+        try skipIfMLXUnavailable()
+
+        let metadata = try loadParityMetadata("entity_multiple_people")
+        let pythonResult = try loadParityResult("entity_multiple_people")
+
+        let text = metadata["text"] as! String
+        let entityTypes = metadata["entity_types"] as! [String]
+
+        print("\n--- PARITY TEST: entity_multiple_people ---")
+        print("Text: '\(text)'")
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let swiftResult = model.extractEntities(
+            text: text,
+            entityTypes: entityTypes,
+            threshold: 0.5,
+            includeConfidence: true,
+            includeSpans: true
+        )
+
+        // Compare
+        for entityType in entityTypes {
+            let pythonTexts = extractEntityTexts(pythonResult, entityType: entityType)
+            let swiftTexts = extractEntityTexts(swiftResult, entityType: entityType)
+
+            print("  \(entityType):")
+            print("    Python: \(pythonTexts.sorted())")
+            print("    Swift:  \(swiftTexts.sorted())")
+
+            if pythonTexts == swiftTexts {
+                print("    ✅ MATCH")
+            } else {
+                print("    ❌ MISMATCH")
+                print("      Missing: \(pythonTexts.subtracting(swiftTexts))")
+                print("      Extra:   \(swiftTexts.subtracting(pythonTexts))")
+            }
+
+            XCTAssertEqual(swiftTexts, pythonTexts,
+                "Entity type '\(entityType)' mismatch for text '\(text)'")
+        }
+    }
+
+    /// Test: Multiple entity types
+    func testParityEntityMultiType() async throws {
+        try skipIfMLXUnavailable()
+
+        let metadata = try loadParityMetadata("entity_multi_type")
+        let pythonResult = try loadParityResult("entity_multi_type")
+
+        let text = metadata["text"] as! String
+        let entityTypes = metadata["entity_types"] as! [String]
+
+        print("\n--- PARITY TEST: entity_multi_type ---")
+        print("Text: '\(text)'")
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let swiftResult = model.extractEntities(
+            text: text,
+            entityTypes: entityTypes,
+            threshold: 0.5,
+            includeConfidence: true,
+            includeSpans: true
+        )
+
+        for entityType in entityTypes {
+            let pythonTexts = extractEntityTexts(pythonResult, entityType: entityType)
+            let swiftTexts = extractEntityTexts(swiftResult, entityType: entityType)
+
+            print("  \(entityType):")
+            print("    Python: \(pythonTexts.sorted())")
+            print("    Swift:  \(swiftTexts.sorted())")
+
+            XCTAssertEqual(swiftTexts, pythonTexts,
+                "Entity type '\(entityType)' mismatch for text '\(text)'")
+        }
+    }
+
+    /// Test: No entities should be found
+    func testParityEntityNoMatch() async throws {
+        try skipIfMLXUnavailable()
+
+        let metadata = try loadParityMetadata("entity_no_match")
+        let pythonResult = try loadParityResult("entity_no_match")
+
+        let text = metadata["text"] as! String
+        let entityTypes = metadata["entity_types"] as! [String]
+
+        print("\n--- PARITY TEST: entity_no_match ---")
+        print("Text: '\(text)'")
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let swiftResult = model.extractEntities(
+            text: text,
+            entityTypes: entityTypes,
+            threshold: 0.5,
+            includeConfidence: true,
+            includeSpans: true
+        )
+
+        for entityType in entityTypes {
+            let pythonTexts = extractEntityTexts(pythonResult, entityType: entityType)
+            let swiftTexts = extractEntityTexts(swiftResult, entityType: entityType)
+
+            print("  \(entityType):")
+            print("    Python: \(pythonTexts) (should be empty)")
+            print("    Swift:  \(swiftTexts)")
+
+            XCTAssertEqual(swiftTexts, pythonTexts,
+                "Entity type '\(entityType)' - expected no matches")
+        }
+    }
+
+    /// Test: Tech companies
+    func testParityEntityTechCompanies() async throws {
+        try skipIfMLXUnavailable()
+
+        let metadata = try loadParityMetadata("entity_tech_companies")
+        let pythonResult = try loadParityResult("entity_tech_companies")
+
+        let text = metadata["text"] as! String
+        let entityTypes = metadata["entity_types"] as! [String]
+
+        print("\n--- PARITY TEST: entity_tech_companies ---")
+        print("Text: '\(text)'")
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let swiftResult = model.extractEntities(
+            text: text,
+            entityTypes: entityTypes,
+            threshold: 0.5,
+            includeConfidence: true,
+            includeSpans: true
+        )
+
+        for entityType in entityTypes {
+            let pythonTexts = extractEntityTexts(pythonResult, entityType: entityType)
+            let swiftTexts = extractEntityTexts(swiftResult, entityType: entityType)
+
+            print("  \(entityType):")
+            print("    Python: \(pythonTexts.sorted())")
+            print("    Swift:  \(swiftTexts.sorted())")
+
+            XCTAssertEqual(swiftTexts, pythonTexts,
+                "Entity type '\(entityType)' mismatch for text '\(text)'")
+        }
+    }
+
+    /// Test: Entities with titles (Dr. Smith)
+    func testParityEntityWithTitles() async throws {
+        try skipIfMLXUnavailable()
+
+        let metadata = try loadParityMetadata("entity_with_titles")
+        let pythonResult = try loadParityResult("entity_with_titles")
+
+        let text = metadata["text"] as! String
+        let entityTypes = metadata["entity_types"] as! [String]
+
+        print("\n--- PARITY TEST: entity_with_titles ---")
+        print("Text: '\(text)'")
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let swiftResult = model.extractEntities(
+            text: text,
+            entityTypes: entityTypes,
+            threshold: 0.5,
+            includeConfidence: true,
+            includeSpans: true
+        )
+
+        for entityType in entityTypes {
+            let pythonTexts = extractEntityTexts(pythonResult, entityType: entityType)
+            let swiftTexts = extractEntityTexts(swiftResult, entityType: entityType)
+
+            print("  \(entityType):")
+            print("    Python: \(pythonTexts.sorted())")
+            print("    Swift:  \(swiftTexts.sorted())")
+
+            XCTAssertEqual(swiftTexts, pythonTexts,
+                "Entity type '\(entityType)' mismatch for text '\(text)'")
+        }
+    }
+
+    // MARK: - Classification Parity Tests
+
+    /// Test: Negative sentiment classification
+    func testParityClassifySentimentNegative() async throws {
+        try skipIfMLXUnavailable()
+
+        let metadata = try loadParityMetadata("classify_sentiment_negative")
+        let pythonResult = try loadParityResult("classify_sentiment_negative")
+
+        let text = metadata["text"] as! String
+        let task = metadata["task"] as! String
+        let labels = metadata["labels"] as! [String]
+
+        print("\n--- PARITY TEST: classify_sentiment_negative ---")
+        print("Text: '\(text)'")
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let swiftResult = model.classifyText(
+            text: text,
+            task: task,
+            labels: labels,
+            multiLabel: false,
+            threshold: 0.5,
+            includeConfidence: true
+        )
+
+        let pythonLabel = extractLabel(pythonResult, task: task)
+        let swiftLabel = extractLabel(swiftResult, task: task)
+
+        print("  Task: \(task)")
+        print("    Python: \(pythonLabel ?? "nil")")
+        print("    Swift:  \(swiftLabel ?? "nil")")
+
+        XCTAssertEqual(swiftLabel, pythonLabel,
+            "Classification mismatch for '\(text)' - expected '\(pythonLabel ?? "nil")' got '\(swiftLabel ?? "nil")'")
+    }
+
+    /// Test: Sports topic classification
+    func testParityClassifyTopicSports() async throws {
+        try skipIfMLXUnavailable()
+
+        let metadata = try loadParityMetadata("classify_topic_sports")
+        let pythonResult = try loadParityResult("classify_topic_sports")
+
+        let text = metadata["text"] as! String
+        let task = metadata["task"] as! String
+        let labels = metadata["labels"] as! [String]
+
+        print("\n--- PARITY TEST: classify_topic_sports ---")
+        print("Text: '\(text)'")
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let swiftResult = model.classifyText(
+            text: text,
+            task: task,
+            labels: labels,
+            multiLabel: false,
+            threshold: 0.5,
+            includeConfidence: true
+        )
+
+        let pythonLabel = extractLabel(pythonResult, task: task)
+        let swiftLabel = extractLabel(swiftResult, task: task)
+
+        print("  Task: \(task)")
+        print("    Python: \(pythonLabel ?? "nil")")
+        print("    Swift:  \(swiftLabel ?? "nil")")
+
+        XCTAssertEqual(swiftLabel, pythonLabel,
+            "Classification mismatch for '\(text)'")
+    }
+
+    /// Test: Neutral/positive sentiment
+    func testParityClassifySentimentNeutral() async throws {
+        try skipIfMLXUnavailable()
+
+        let metadata = try loadParityMetadata("classify_sentiment_neutral")
+        let pythonResult = try loadParityResult("classify_sentiment_neutral")
+
+        let text = metadata["text"] as! String
+        let task = metadata["task"] as! String
+        let labels = metadata["labels"] as! [String]
+
+        print("\n--- PARITY TEST: classify_sentiment_neutral ---")
+        print("Text: '\(text)'")
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let swiftResult = model.classifyText(
+            text: text,
+            task: task,
+            labels: labels,
+            multiLabel: false,
+            threshold: 0.5,
+            includeConfidence: true
+        )
+
+        let pythonLabel = extractLabel(pythonResult, task: task)
+        let swiftLabel = extractLabel(swiftResult, task: task)
+
+        print("  Task: \(task)")
+        print("    Python: \(pythonLabel ?? "nil")")
+        print("    Swift:  \(swiftLabel ?? "nil")")
+
+        XCTAssertEqual(swiftLabel, pythonLabel,
+            "Classification mismatch for '\(text)'")
+    }
+
+    /// Test: Technology topic
+    func testParityClassifyTopicTech() async throws {
+        try skipIfMLXUnavailable()
+
+        let metadata = try loadParityMetadata("classify_topic_tech")
+        let pythonResult = try loadParityResult("classify_topic_tech")
+
+        let text = metadata["text"] as! String
+        let task = metadata["task"] as! String
+        let labels = metadata["labels"] as! [String]
+
+        print("\n--- PARITY TEST: classify_topic_tech ---")
+        print("Text: '\(text)'")
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let swiftResult = model.classifyText(
+            text: text,
+            task: task,
+            labels: labels,
+            multiLabel: false,
+            threshold: 0.5,
+            includeConfidence: true
+        )
+
+        let pythonLabel = extractLabel(pythonResult, task: task)
+        let swiftLabel = extractLabel(swiftResult, task: task)
+
+        print("  Task: \(task)")
+        print("    Python: \(pythonLabel ?? "nil")")
+        print("    Swift:  \(swiftLabel ?? "nil")")
+
+        XCTAssertEqual(swiftLabel, pythonLabel,
+            "Classification mismatch for '\(text)'")
+    }
+
+    // MARK: - Structure Extraction Parity Tests
+
+    /// Extract structure field texts from result
+    private func extractStructureFieldTexts(_ result: [String: Any], structureName: String, field: String) -> Set<String> {
+        var texts: Set<String> = []
+
+        guard let instances = result[structureName] as? [[String: Any]] else {
+            return texts
+        }
+
+        for instance in instances {
+            if let fieldValues = instance[field] as? [[String: Any]] {
+                for value in fieldValues {
+                    if let text = value["text"] as? String {
+                        texts.insert(text)
+                    }
+                }
+            } else if let text = instance[field] as? String {
+                texts.insert(text)
+            }
+        }
+
+        return texts
+    }
+
+    /// Test: Product structure extraction
+    func testParityStructProduct() async throws {
+        try skipIfMLXUnavailable()
+
+        let metadata = try loadParityMetadata("struct_product")
+        let pythonResult = try loadParityResult("struct_product")
+
+        let text = metadata["text"] as! String
+        let structureName = metadata["structure_name"] as! String
+        let fields = metadata["fields"] as! [String]
+
+        print("\n--- PARITY TEST: struct_product ---")
+        print("Text: '\(text)'")
+        print("Structure: \(structureName)")
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+
+        var schemaBuilder = model.createSchema().structure(structureName)
+        for field in fields {
+            schemaBuilder = schemaBuilder.field(field, dtype: "str")
+        }
+        let schema = schemaBuilder.done()
+
+        let swiftResult = model.extract(
+            text: text,
+            schema: schema,
+            threshold: 0.5,
+            includeConfidence: true,
+            includeSpans: true
+        )
+
+        print("  Python result:")
+        printJSON(pythonResult)
+        print("  Swift result:")
+        printJSON(swiftResult)
+
+        for field in fields {
+            let pythonTexts = extractStructureFieldTexts(pythonResult, structureName: structureName, field: field)
+            let swiftTexts = extractStructureFieldTexts(swiftResult, structureName: structureName, field: field)
+
+            print("  Field '\(field)':")
+            print("    Python: \(pythonTexts)")
+            print("    Swift:  \(swiftTexts)")
+
+            XCTAssertEqual(swiftTexts, pythonTexts,
+                "Field '\(field)' mismatch for structure '\(structureName)'")
+        }
+    }
+
+    /// Test: Event structure extraction
+    func testParityStructEvent() async throws {
+        try skipIfMLXUnavailable()
+
+        let metadata = try loadParityMetadata("struct_event")
+        let pythonResult = try loadParityResult("struct_event")
+
+        let text = metadata["text"] as! String
+        let structureName = metadata["structure_name"] as! String
+        let fields = metadata["fields"] as! [String]
+
+        print("\n--- PARITY TEST: struct_event ---")
+        print("Text: '\(text)'")
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+
+        var schemaBuilder = model.createSchema().structure(structureName)
+        for field in fields {
+            schemaBuilder = schemaBuilder.field(field, dtype: "str")
+        }
+        let schema = schemaBuilder.done()
+
+        let swiftResult = model.extract(
+            text: text,
+            schema: schema,
+            threshold: 0.5,
+            includeConfidence: true,
+            includeSpans: true
+        )
+
+        for field in fields {
+            let pythonTexts = extractStructureFieldTexts(pythonResult, structureName: structureName, field: field)
+            let swiftTexts = extractStructureFieldTexts(swiftResult, structureName: structureName, field: field)
+
+            print("  Field '\(field)':")
+            print("    Python: \(pythonTexts)")
+            print("    Swift:  \(swiftTexts)")
+
+            XCTAssertEqual(swiftTexts, pythonTexts,
+                "Field '\(field)' mismatch for structure '\(structureName)'")
+        }
+    }
+
+    /// Test: Contact structure extraction
+    func testParityStructContact() async throws {
+        try skipIfMLXUnavailable()
+
+        let metadata = try loadParityMetadata("struct_contact")
+        let pythonResult = try loadParityResult("struct_contact")
+
+        let text = metadata["text"] as! String
+        let structureName = metadata["structure_name"] as! String
+        let fields = metadata["fields"] as! [String]
+
+        print("\n--- PARITY TEST: struct_contact ---")
+        print("Text: '\(text)'")
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+
+        var schemaBuilder = model.createSchema().structure(structureName)
+        for field in fields {
+            schemaBuilder = schemaBuilder.field(field, dtype: "str")
+        }
+        let schema = schemaBuilder.done()
+
+        let swiftResult = model.extract(
+            text: text,
+            schema: schema,
+            threshold: 0.5,
+            includeConfidence: true,
+            includeSpans: true
+        )
+
+        for field in fields {
+            let pythonTexts = extractStructureFieldTexts(pythonResult, structureName: structureName, field: field)
+            let swiftTexts = extractStructureFieldTexts(swiftResult, structureName: structureName, field: field)
+
+            print("  Field '\(field)':")
+            print("    Python: \(pythonTexts)")
+            print("    Swift:  \(swiftTexts)")
+
+            XCTAssertEqual(swiftTexts, pythonTexts,
+                "Field '\(field)' mismatch for structure '\(structureName)'")
+        }
+    }
+
+    // MARK: - Diagnostic Tests for Phone Extraction Issue
+
+    /// Diagnostic test to trace struct_contact extraction step by step
+    func testDiagnosticStructContactExtraction() async throws {
+        try skipIfMLXUnavailable()
+
+        print("\n" + String(repeating: "=", count: 70))
+        print("DIAGNOSTIC: struct_contact Phone Extraction")
+        print(String(repeating: "=", count: 70))
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+
+        let text = "Contact john@email.com or call 555-1234."
+        let structureName = "contact"
+        let fields = ["email", "phone"]
+
+        print("\n1. INPUT")
+        print("   Text: '\(text)'")
+        print("   Structure: \(structureName)")
+        print("   Fields: \(fields)")
+
+        // Build schema
+        var schemaBuilder = model.createSchema().structure(structureName)
+        for field in fields {
+            schemaBuilder = schemaBuilder.field(field, dtype: "str")
+        }
+        let schema = schemaBuilder.done()
+        let schemaDict = schema.build()
+        print("\n2. SCHEMA")
+        print("   Schema dict: \(schemaDict)")
+
+        // Normalize text
+        let normalizedText = text.lowercased()
+        print("\n3. NORMALIZED TEXT: '\(normalizedText)'")
+
+        // Transform
+        let record = model.processor.transform(text: normalizedText, schema: schemaDict)
+        print("\n4. TRANSFORMED RECORD")
+        print("   Token IDs count: \(record.inputIds.count)")
+        print("   Token IDs: \(record.inputIds)")
+        print("   Schema tokens: \(record.schemaTokensList)")
+        print("   Task types: \(record.taskTypes)")
+        print("   Text tokens: \(record.textTokens)")
+
+        // Show mapped indices
+        print("\n5. MAPPED INDICES")
+        for (i, mapping) in record.mappedIndices.enumerated() {
+            let tokenId = i < record.inputIds.count ? record.inputIds[i] : -1
+            let tokenStr = model.processor.tokenizer.idToToken(tokenId) ?? "?"
+            print("   pos \(i): id=\(tokenId), token=\"\(tokenStr)\", seg=\(mapping.segmentType), origIdx=\(mapping.originalIndex)")
+        }
+
+        // Collate batch
+        let batch = model.processor.collateBatch([record])
+        print("\n6. BATCH")
+        print("   Input IDs shape: \(batch.inputIds.shape)")
+        print("   Start mappings: \(batch.startMappings[0])")
+        print("   End mappings: \(batch.endMappings[0])")
+
+        // Run encoder
+        print("\n7. ENCODER OUTPUT")
+        let encoderOutput = model.model.encode(batch.inputIds, attentionMask: batch.attentionMask)
+        let hiddenStates = encoderOutput.lastHiddenState
+        MLX.eval(hiddenStates)
+        print("   Hidden states shape: \(hiddenStates.shape)")
+
+        // Find text start
+        var textStartIdx = 0
+        for (idx, mapping) in batch.mappedIndices[0].enumerated() {
+            if mapping.segmentType == .text {
+                textStartIdx = idx
+                break
+            }
+        }
+        print("   Text starts at index: \(textStartIdx)")
+
+        let sampleHidden = hiddenStates[0]
+        let textLen = batch.mappedIndices[0].count - textStartIdx
+        let textEmbeddings = sampleHidden[textStartIdx...]
+        print("   Text length: \(textLen)")
+
+        // Extract schema embeddings
+        print("\n8. SCHEMA EMBEDDINGS")
+        let specialTokens: Set<String> = ["[P]", "[C]", "[E]", "[R]", "[L]"]
+        var schemaEmbList: [MLXArray] = []
+
+        for (idx, mapping) in batch.mappedIndices[0].enumerated() {
+            if mapping.segmentType == .schema {
+                let tokenId = batch.getInputIds(for: 0)[idx]
+                if let tokenStr = model.processor.tokenizer.idToToken(tokenId),
+                   specialTokens.contains(tokenStr) {
+                    schemaEmbList.append(sampleHidden[idx])
+                    print("   Schema token \(schemaEmbList.count - 1): pos=\(idx), token=\"\(tokenStr)\"")
+                }
+            }
+        }
+
+        guard !schemaEmbList.isEmpty else {
+            XCTFail("No schema embeddings found")
+            return
+        }
+
+        let embs = MLX.stacked(schemaEmbList, axis: 0)
+        print("   Schema embs shape: \(embs.shape)")
+
+        // Count prediction
+        print("\n9. COUNT PREDICTION")
+        let countLogits = model.model.countPred(embs[0].expandedDimensions(axis: 0))
+        MLX.eval(countLogits)
+        let predCountIdx = MLX.argMax(countLogits.squeezed(axis: 0))
+        MLX.eval(predCountIdx)
+        let predCount = Int(predCountIdx.item(Int32.self))
+        print("   Predicted count: \(predCount)")
+
+        guard predCount > 0 else {
+            XCTFail("predCount is 0, cannot extract")
+            return
+        }
+
+        // Span representation
+        print("\n10. SPAN REPRESENTATION")
+        let spanInfo = model.model.computeSpanRep(textEmbeddings)
+        MLX.eval(spanInfo.spanRep)
+        print("   Span rep shape: \(spanInfo.spanRep.shape)")
+        let spanRepL1 = MLX.sum(MLX.abs(spanInfo.spanRep))
+        MLX.eval(spanRepL1)
+        print("   Span rep L1 sum: \(spanRepL1.item(Float.self))")
+
+        // Count embed
+        print("\n11. COUNT EMBED")
+        let fieldEmbs = embs[1...]  // Skip [P]
+        let structProj = model.model.countEmbed(fieldEmbs, goldCountVal: predCount)
+        MLX.eval(structProj)
+        print("   Field embs shape: \(fieldEmbs.shape)")
+        print("   Struct proj shape: \(structProj.shape)")
+
+        // Compute span scores
+        print("\n12. SPAN SCORES")
+        let L = spanInfo.spansIdx.dim(1) / model.config.maxWidth
+        let maxWidth = model.config.maxWidth
+        let hiddenSize = model.config.hiddenSize
+        let spanRepReshaped = spanInfo.spanRep.reshaped([L, maxWidth, hiddenSize])
+        print("   L (text positions): \(L)")
+        print("   maxWidth: \(maxWidth)")
+
+        var spanScores = MLX.einsum("lkd,cpd->cplk", spanRepReshaped, structProj)
+        spanScores = MLX.sigmoid(spanScores)
+        MLX.eval(spanScores)
+        print("   Span scores shape: \(spanScores.shape)")
+
+        // Check scores for each field
+        for (fieldIdx, fieldName) in fields.enumerated() {
+            guard fieldIdx < spanScores.dim(1) else {
+                print("\n   Field '\(fieldName)': INDEX OUT OF BOUNDS")
+                continue
+            }
+
+            let fieldScores = spanScores[0, fieldIdx]  // [L, maxWidth]
+            MLX.eval(fieldScores)
+
+            let maxScore = MLX.max(fieldScores)
+            let scoresAbove05 = MLX.sum(fieldScores .> Float(0.5))
+            let scoresAbove03 = MLX.sum(fieldScores .> Float(0.3))
+            MLX.eval(maxScore, scoresAbove05, scoresAbove03)
+
+            print("\n   Field '\(fieldName)':")
+            print("     Shape: \(fieldScores.shape)")
+            print("     Max score: \(maxScore.item(Float.self))")
+            print("     Scores > 0.5: \(scoresAbove05.item(Int32.self))")
+            print("     Scores > 0.3: \(scoresAbove03.item(Int32.self))")
+
+            // Find high score positions
+            print("     High score positions (token_idx, width):")
+            for tokenIdx in 0..<L {
+                for width in 0..<maxWidth {
+                    let score = fieldScores[tokenIdx, width]
+                    MLX.eval(score)
+                    let scoreVal = score.item(Float.self)
+                    if scoreVal > 0.3 {
+                        // Map to character positions
+                        let startChar = tokenIdx < batch.startMappings[0].count ? batch.startMappings[0][tokenIdx] : -1
+                        let endIdx = tokenIdx + width
+                        let endChar = endIdx < batch.endMappings[0].count ? batch.endMappings[0][endIdx] : -1
+                        let spanText = startChar >= 0 && endChar > startChar && endChar <= text.count
+                            ? String(text[text.index(text.startIndex, offsetBy: startChar)..<text.index(text.startIndex, offsetBy: endChar)])
+                            : "?"
+                        print("       token[\(tokenIdx):\(tokenIdx + width + 1)], chars[\(startChar):\(endChar)], score=\(String(format: "%.4f", scoreVal)), text=\"\(spanText)\"")
+                    }
+                }
+            }
+        }
+
+        print("\n" + String(repeating: "=", count: 70))
+        print("DIAGNOSTIC COMPLETE")
+        print(String(repeating: "=", count: 70))
+    }
+
+    /// Test with additional structure extraction cases
+    func testAdditionalStructureParityCases() async throws {
+        try skipIfMLXUnavailable()
+
+        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+
+        // Test cases: (text, structureName, fields, expectedResults)
+        let testCases: [(String, String, [String], [String: [String]])] = [
+            // Simple phone number
+            ("Call me at 555-1234.", "info", ["phone"], ["phone": ["555-1234"]]),
+            // Email only
+            ("Email: test@example.com", "info", ["email"], ["email": ["test@example.com"]]),
+            // Both email and phone in different order
+            ("Phone: 123-4567, Email: user@domain.org", "contact", ["email", "phone"],
+             ["email": ["user@domain.org"], "phone": ["123-4567"]]),
+            // Name and location
+            ("John Smith lives in New York.", "person", ["name", "location"],
+             ["name": ["John Smith"], "location": ["New York"]]),
+        ]
+
+        print("\n" + String(repeating: "=", count: 70))
+        print("ADDITIONAL STRUCTURE PARITY TESTS")
+        print(String(repeating: "=", count: 70))
+
+        for (text, structureName, fields, expected) in testCases {
+            print("\n--- Test: '\(text)' ---")
+            print("Structure: \(structureName), Fields: \(fields)")
+
+            var schemaBuilder = model.createSchema().structure(structureName)
+            for field in fields {
+                schemaBuilder = schemaBuilder.field(field, dtype: "str")
+            }
+            let schema = schemaBuilder.done()
+
+            let result = model.extract(
+                text: text,
+                schema: schema,
+                threshold: 0.5,
+                includeConfidence: true,
+                includeSpans: true
+            )
+
+            print("Result: \(result)")
+
+            // Check each field
+            for field in fields {
+                let swiftTexts = extractStructureFieldTexts(result, structureName: structureName, field: field)
+                let expectedTexts = Set(expected[field] ?? [])
+
+                print("  Field '\(field)':")
+                print("    Expected: \(expectedTexts)")
+                print("    Swift:    \(swiftTexts)")
+
+                if swiftTexts == expectedTexts {
+                    print("    ✅ MATCH")
+                } else {
+                    print("    ❌ MISMATCH")
+                }
+            }
+        }
+
+        print("\n" + String(repeating: "=", count: 70))
     }
 
 }

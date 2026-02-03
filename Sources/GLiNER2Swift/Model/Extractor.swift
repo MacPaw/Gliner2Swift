@@ -225,7 +225,25 @@ public struct SpanInfo {
 // MARK: - Weight Loading
 
 extension Extractor {
-    /// Load all weights from SafeTensors files
+    /// Load all weights from a single combined SafeTensors file
+    ///
+    /// This is the preferred method. The combined file contains both encoder
+    /// and model weights with the following key structure:
+    /// - Encoder weights: `encoder.embeddings.*`, `encoder.encoder.*`
+    /// - Model weights: `spanRep.*`, `classifier.*`, `countPred.*`, `countEmbed.*`
+    ///
+    /// - Parameter url: URL to model.safetensors (combined weights file)
+    public func loadWeights(from url: URL) throws {
+        let weights = try SafeTensorsLoader.load(from: url)
+
+        // Load encoder weights (keys starting with "encoder.")
+        encoder.loadWeights(weights, prefix: "encoder")
+
+        // Load model-specific weights (spanRep, classifier, countPred, countEmbed)
+        loadModelWeights(weights)
+    }
+
+    /// Load all weights from separate SafeTensors files (legacy method)
     ///
     /// - Parameters:
     ///   - modelWeightsUrl: URL to gliner2_weights.safetensors

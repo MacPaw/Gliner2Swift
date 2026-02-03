@@ -48,22 +48,31 @@ public class GLiNER2 {
         let isLocalPath = FileManager.default.fileExists(atPath: pathOrRepo)
 
         let configUrl: URL
-        let modelWeightsUrl: URL
-        let encoderWeightsUrl: URL
-        let tokenizerConfigUrl: URL
+        var combinedWeightsUrl: URL?
+        var splitModelWeightsUrl: URL?
+        var splitEncoderWeightsUrl: URL?
 
         if isLocalPath {
             // Local directory
             let baseUrl = URL(fileURLWithPath: pathOrRepo)
             configUrl = baseUrl.appendingPathComponent("config.json")
-            modelWeightsUrl = baseUrl.appendingPathComponent("gliner2_weights.safetensors")
-            encoderWeightsUrl = baseUrl.appendingPathComponent("encoder_weights.safetensors")
-            tokenizerConfigUrl = baseUrl.appendingPathComponent("tokenizer.json")
 
-            // Fall back to single model.safetensors if split weights don't exist
-            if !FileManager.default.fileExists(atPath: modelWeightsUrl.path) {
-                // Use combined weights file if separate don't exist
-                throw GLiNER2Error.fileNotFound("gliner2_weights.safetensors")
+            // Try single combined file first (preferred)
+            let combinedPath = baseUrl.appendingPathComponent("model.safetensors")
+            if FileManager.default.fileExists(atPath: combinedPath.path) {
+                combinedWeightsUrl = combinedPath
+            } else {
+                // Fall back to split files
+                let modelWeightsPath = baseUrl.appendingPathComponent("gliner2_weights.safetensors")
+                let encoderWeightsPath = baseUrl.appendingPathComponent("encoder_weights.safetensors")
+
+                if FileManager.default.fileExists(atPath: modelWeightsPath.path) &&
+                   FileManager.default.fileExists(atPath: encoderWeightsPath.path) {
+                    splitModelWeightsUrl = modelWeightsPath
+                    splitEncoderWeightsUrl = encoderWeightsPath
+                } else {
+                    throw GLiNER2Error.fileNotFound("model.safetensors or gliner2_weights.safetensors + encoder_weights.safetensors")
+                }
             }
         } else {
             // Download from HuggingFace Hub
@@ -74,22 +83,17 @@ public class GLiNER2 {
             }
             configUrl = config
 
-            // Try to get split weight files or fall back to combined
-            if let modelW = files["gliner2_weights.safetensors"],
-               let encoderW = files["encoder_weights.safetensors"] {
-                modelWeightsUrl = modelW
-                encoderWeightsUrl = encoderW
-            } else if let combined = files["model.safetensors"] {
-                // TODO: Need to handle combined weights
-                throw GLiNER2Error.unsupportedFormat("Combined model.safetensors not yet supported. Use convert_weights.py to split.")
+            // Try combined file first (preferred)
+            if let combined = files["model.safetensors"] {
+                combinedWeightsUrl = combined
+            } else if let modelW = files["gliner2_weights.safetensors"],
+                      let encoderW = files["encoder_weights.safetensors"] {
+                // Fall back to split files
+                splitModelWeightsUrl = modelW
+                splitEncoderWeightsUrl = encoderW
             } else {
-                throw GLiNER2Error.fileNotFound("model weights")
+                throw GLiNER2Error.fileNotFound("model weights (model.safetensors or gliner2_weights.safetensors + encoder_weights.safetensors)")
             }
-
-            guard let tokenizer = files["tokenizer.json"] else {
-                throw GLiNER2Error.fileNotFound("tokenizer.json")
-            }
-            tokenizerConfigUrl = tokenizer
         }
 
         // 1. Load configuration
@@ -127,11 +131,18 @@ public class GLiNER2 {
         // 3. Create model instance
         let gliner2 = GLiNER2(config: config, processor: processor)
 
-        // 4. Load weights
-        try gliner2.model.loadWeights(
-            modelWeightsUrl: modelWeightsUrl,
-            encoderWeightsUrl: encoderWeightsUrl
-        )
+        // 4. Load weights - try combined file first, fall back to split files
+        if let combinedUrl = combinedWeightsUrl {
+            try gliner2.model.loadWeights(from: combinedUrl)
+        } else if let modelUrl = splitModelWeightsUrl,
+                  let encoderUrl = splitEncoderWeightsUrl {
+            try gliner2.model.loadWeights(
+                modelWeightsUrl: modelUrl,
+                encoderWeightsUrl: encoderUrl
+            )
+        } else {
+            throw GLiNER2Error.fileNotFound("model weights")
+        }
 
         // 5. Set to evaluation mode (disables dropout)
         gliner2.model.train(false)
@@ -352,10 +363,18 @@ public class GLiNER2 {
             // Find text tokens position
             let textStartIdx = findTextStartIndex(mapping: mappedIndices)
             let seqLen = mappedIndices.count
-            let textLen = seqLen - textStartIdx
 
-            // Get text token embeddings
-            let textEmbeddings = sampleHidden[textStartIdx..<seqLen]  // [text_len, hidden]
+            // Get text token embeddings (subword level)
+            let subwordEmbeddings = sampleHidden[textStartIdx..<seqLen]  // [num_subwords, hidden]
+
+            // Pool subword embeddings to word-level embeddings
+            // This aggregates subwords belonging to the same whitespace-split word
+            let pooledEmbeddings = poolTextEmbeddings(
+                subwordEmbeddings: subwordEmbeddings,
+                mappedIndices: Array(mappedIndices[textStartIdx...]),
+                poolingType: processor.tokenPooling
+            )
+            let textLen = pooledEmbeddings.dim(0)  // Number of whitespace words
 
             // Extract schema embeddings per-schema (grouped by schema_idx in mapping)
             // Only special tokens ([P], [C], [E], [R], [L]) contribute embeddings
@@ -373,7 +392,7 @@ public class GLiNER2 {
             let hasSpanTask = taskTypes.contains { $0 != "classifications" }
             var spanInfo: SpanInfo? = nil
             if hasSpanTask && textLen > 0 {
-                spanInfo = model.computeSpanRep(textEmbeddings)
+                spanInfo = model.computeSpanRep(pooledEmbeddings)
             }
 
             // Build classification field map for structures with choices
@@ -532,6 +551,77 @@ public class GLiNER2 {
         let maxIdx = MLX.argMax(arr)
         MLX.eval(maxIdx)
         return Int(maxIdx.item(Int32.self))
+    }
+
+    /// Pool subword embeddings to word-level embeddings.
+    ///
+    /// This aggregates subword embeddings belonging to the same whitespace-split word.
+    /// Matches Python: processor.py:_aggregate() and extract_embeddings_from_batch()
+    ///
+    /// - Parameters:
+    ///   - subwordEmbeddings: Subword token embeddings [num_subwords, hidden]
+    ///   - mappedIndices: Mapping info for each subword (must be text segment only)
+    ///   - poolingType: How to aggregate subwords ("first", "mean", or "max")
+    /// - Returns: Word-level embeddings [num_words, hidden]
+    private func poolTextEmbeddings(
+        subwordEmbeddings: MLXArray,
+        mappedIndices: [MappedIndex],
+        poolingType: TokenPoolingType
+    ) -> MLXArray {
+        guard subwordEmbeddings.dim(0) > 0 else {
+            return subwordEmbeddings
+        }
+
+        var wordEmbeddings: [MLXArray] = []
+        var bucket: [MLXArray] = []
+        var lastOrigIdx: Int? = nil
+
+        for (i, mapping) in mappedIndices.enumerated() {
+            guard mapping.segmentType == .text else { continue }
+
+            let emb = subwordEmbeddings[i]
+            let origIdx = mapping.originalIndex
+
+            // When we see a new word (different origIdx), aggregate the previous bucket
+            if let last = lastOrigIdx, origIdx != last, !bucket.isEmpty {
+                wordEmbeddings.append(aggregateEmbeddings(bucket, poolingType: poolingType))
+                bucket = []
+            }
+
+            bucket.append(emb)
+            lastOrigIdx = origIdx
+        }
+
+        // Don't forget the last bucket
+        if !bucket.isEmpty {
+            wordEmbeddings.append(aggregateEmbeddings(bucket, poolingType: poolingType))
+        }
+
+        guard !wordEmbeddings.isEmpty else {
+            return MLXArray.zeros([0, config.hiddenSize])
+        }
+
+        return MLX.stacked(wordEmbeddings, axis: 0)
+    }
+
+    /// Aggregate multiple embeddings using the specified pooling strategy.
+    ///
+    /// Matches Python: processor.py:_aggregate()
+    private func aggregateEmbeddings(_ embeddings: [MLXArray], poolingType: TokenPoolingType) -> MLXArray {
+        guard !embeddings.isEmpty else {
+            fatalError("Cannot aggregate empty embeddings")
+        }
+
+        switch poolingType {
+        case .first:
+            return embeddings[0]
+        case .mean:
+            let stacked = MLX.stacked(embeddings, axis: 0)
+            return MLX.mean(stacked, axis: 0)
+        case .max:
+            let stacked = MLX.stacked(embeddings, axis: 0)
+            return MLX.max(stacked, axis: 0)
+        }
     }
 
     // MARK: - Classification Extraction
@@ -1030,6 +1120,8 @@ public class Schema {
             entitiesDict[entityType] = ""
         }
         internalSchemaDict["entities"] = entitiesDict
+        // Store entity order for parity with Python
+        internalSchemaDict["_entity_order"] = entityTypes
         return self
     }
 
@@ -1048,11 +1140,15 @@ public class Schema {
     @discardableResult
     public func entities(_ typesWithDescriptions: [String: String]) -> Schema {
         var entitiesDict = internalSchemaDict["entities"] as? [String: Any] ?? [:]
-        for entityType in typesWithDescriptions.keys {
+        // Note: Dictionary iteration order is not guaranteed, so sort for consistency
+        let sortedKeys = typesWithDescriptions.keys.sorted()
+        for entityType in sortedKeys {
             entitiesDict[entityType] = ""
         }
         internalSchemaDict["entities"] = entitiesDict
         internalSchemaDict["entity_descriptions"] = typesWithDescriptions
+        // Store entity order for parity with Python (sorted since dict order is not preserved)
+        internalSchemaDict["_entity_order"] = sortedKeys
         return self
     }
 
@@ -1104,6 +1200,7 @@ public class StructureBuilder {
     private let schema: Schema
     private let name: String
     private var fields: [String: Any] = [:]
+    private var fieldOrder: [String] = []  // Track insertion order
     private var descriptions: [String: String] = [:]
 
     init(schema: Schema, name: String) {
@@ -1133,6 +1230,11 @@ public class StructureBuilder {
             fields[fieldName] = ""
         }
 
+        // Track insertion order (only add if new)
+        if !fieldOrder.contains(fieldName) {
+            fieldOrder.append(fieldName)
+        }
+
         // Store description if provided
         if let description = description {
             descriptions[fieldName] = description
@@ -1147,6 +1249,11 @@ public class StructureBuilder {
         var structures = schema.internalSchemaDict["json_structures"] as? [[String: Any]] ?? []
         structures.append([name: fields])
         schema.internalSchemaDict["json_structures"] = structures
+
+        // Store field order for this structure (critical for parity with Python)
+        var fieldOrders = schema.internalSchemaDict["_field_orders"] as? [String: [String]] ?? [:]
+        fieldOrders[name] = fieldOrder
+        schema.internalSchemaDict["_field_orders"] = fieldOrders
 
         // Store descriptions if any were provided
         if !descriptions.isEmpty {

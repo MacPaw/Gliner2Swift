@@ -268,10 +268,18 @@ public class SchemaTransformer {
         if let jsonStructures = schema["json_structures"] as? [[String: [String: Any]]] {
             // Get field descriptions for all structures
             let jsonDescriptions = schema["json_descriptions"] as? [String: [String: String]] ?? [:]
+            // Get preserved field orders (set by StructureBuilder)
+            let fieldOrders = schema["_field_orders"] as? [String: [String]] ?? [:]
 
             for structure in jsonStructures {
                 for (parent, fields) in structure {
-                    let fieldNames = Array(fields.keys)
+                    // Use preserved field order if available, otherwise fall back to dictionary keys
+                    let fieldNames: [String]
+                    if let order = fieldOrders[parent], !order.isEmpty {
+                        fieldNames = order
+                    } else {
+                        fieldNames = Array(fields.keys).sorted()  // Sort for consistency
+                    }
                     guard !fieldNames.isEmpty else { continue }
 
                     // Get descriptions for this structure's fields
@@ -298,7 +306,13 @@ public class SchemaTransformer {
 
         // Process entities
         if let entities = schema["entities"] as? [String: Any] {
-            let entityNames = Array(entities.keys)
+            // Use preserved entity order if available, otherwise sort keys for consistency
+            let entityNames: [String]
+            if let order = schema["_entity_order"] as? [String], !order.isEmpty {
+                entityNames = order
+            } else {
+                entityNames = Array(entities.keys).sorted()
+            }
             // Only process if there are entity names (don't early return - other schemas may follow)
             if !entityNames.isEmpty {
                 // Get entity descriptions if available
@@ -323,9 +337,18 @@ public class SchemaTransformer {
 
         // Process relations
         if let relations = schema["relations"] as? [[String: [String: Any]]] {
+            // Get preserved relation field orders
+            let relationOrders = schema["_relation_orders"] as? [String: [String]] ?? [:]
+
             for relation in relations {
                 for (parent, fields) in relation {
-                    let fieldNames = Array(fields.keys)
+                    // Use preserved field order if available, otherwise sort
+                    let fieldNames: [String]
+                    if let order = relationOrders[parent], !order.isEmpty {
+                        fieldNames = order
+                    } else {
+                        fieldNames = Array(fields.keys).sorted()
+                    }
                     guard !fieldNames.isEmpty else { continue }
 
                     let schemaTokens = buildSchemaTokens(
