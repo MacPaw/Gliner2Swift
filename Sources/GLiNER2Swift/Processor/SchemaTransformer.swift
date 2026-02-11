@@ -412,8 +412,8 @@ public class SchemaTransformer {
 
         // Add descriptions if available
         if let descriptions = labelDescriptions {
-            for (label, desc) in descriptions {
-                if fields.contains(label) {
+            for label in fields {
+                if let desc = descriptions[label] {
                     promptStr += " \(SpecialTokens.descToken) \(label): \(desc)"
                 }
             }
