@@ -1,6 +1,24 @@
 # GLiNER2Swift
+<img width="1632" height="640" alt="Image" src="https://github.com/user-attachments/assets/c0c59f91-3ae5-4fb3-a0a0-316f2609a6b3" />
+
+![Swift Workflow](https://github.com/MacPaw/OpenAI/actions/workflows/swift.yml/badge.svg)
+[![Twitter](https://img.shields.io/static/v1?label=Twitter&message=@MacPaw&color=CA1F67)](https://twitter.com/MacPaw)
 
 Swift/MLX implementation of [GLiNER2](https://github.com/fastino-ai/gliner2) - a unified schema-based information extraction framework.
+
+## Table of Contents
+
+- [Features](#features)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Available Models](#available-models)
+- [API Reference](#api-reference)
+- [Architecture](#architecture)
+- [Performance](#performance)
+- [Work in Progress](#work-in-progress)
+- [Contributing](#contributing)
+- [Acknowledgments](#acknowledgments)
 
 ## Features
 
@@ -106,6 +124,21 @@ On Apple Silicon (M1/M2/M3):
 - Model loading: ~2 seconds
 - Inference: ~50ms per sentence (varies by length)
 
+
+## Work in Progress
+
+This is an active port of the [Python GLiNER2](https://github.com/fastino-ai/gliner2) implementation. The following features are **not yet implemented**:
+
+- **Training loop** - Fine-tuning and training from scratch are not yet supported
+- **Relation extraction** - Schema-based relation extraction between entities
+- **LoRA adapters** - Low-rank adaptation for efficient fine-tuning
+- **Additional GLiNER models** - Currently only `deberta-v3-base` is supported; other model variants are not yet available
+
+Contributions and PRs are welcome!
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on submitting PRs, branch naming conventions, and parity testing requirements.
 
 ## Acknowledgments
 
