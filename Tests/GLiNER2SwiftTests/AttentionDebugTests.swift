@@ -316,7 +316,6 @@ final class AttentionDebugTests: XCTestCase {
     func testC2P_WithPythonEmbeddings() async throws {
         // Load Python fixtures - try multiple possible paths
         let possiblePaths = [
-            "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/Tests/GLiNER2SwiftTests/Fixtures/attention_layer0.safetensors",
             URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
                 .appendingPathComponent("Tests/GLiNER2SwiftTests/Fixtures/attention_layer0.safetensors").path,
             URL(fileURLWithPath: #file)
@@ -437,7 +436,6 @@ final class AttentionDebugTests: XCTestCase {
     func testP2C_WithPythonEmbeddings() async throws {
         // Load Python fixtures
         let possiblePaths = [
-            "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/Tests/GLiNER2SwiftTests/Fixtures/attention_layer0.safetensors",
             URL(fileURLWithPath: #file)
                 .deletingLastPathComponent()
                 .appendingPathComponent("Fixtures/attention_layer0.safetensors").path
@@ -650,7 +648,6 @@ final class AttentionDebugTests: XCTestCase {
     func testLayer0Output() async throws {
         // Load fixtures
         let possiblePaths = [
-            "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/Tests/GLiNER2SwiftTests/Fixtures/layer0_debug.safetensors",
             URL(fileURLWithPath: #file)
                 .deletingLastPathComponent()
                 .appendingPathComponent("Fixtures/layer0_debug.safetensors").path

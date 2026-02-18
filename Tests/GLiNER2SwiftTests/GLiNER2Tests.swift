@@ -420,7 +420,11 @@ final class StructureDescriptionsTests: XCTestCase {
 
     func testStructureTokensIncludeDescriptions() throws {
         // Skip if tokenizer not available
-        let tokenizerPath = URL(fileURLWithPath: "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/gliner2-base-v1")
+        let tokenizerPath = URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("gliner2-base-v1")
         guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
             throw XCTSkip("Tokenizer not available at \(tokenizerPath.path)")
         }
@@ -455,7 +459,11 @@ final class StructureDescriptionsTests: XCTestCase {
 
     func testStructureTokensWithoutDescriptions() throws {
         // Skip if tokenizer not available
-        let tokenizerPath = URL(fileURLWithPath: "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/gliner2-base-v1")
+        let tokenizerPath = URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("gliner2-base-v1")
         guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
             throw XCTSkip("Tokenizer not available at \(tokenizerPath.path)")
         }
@@ -489,7 +497,11 @@ final class EntityDescriptionsTests: XCTestCase {
 
     func testSchemaTokensIncludeDescriptions() throws {
         // Skip if tokenizer not available
-        let tokenizerPath = URL(fileURLWithPath: "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/gliner2-base-v1")
+        let tokenizerPath = URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("gliner2-base-v1")
         guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
             throw XCTSkip("Tokenizer not available at \(tokenizerPath.path)")
         }
@@ -524,7 +536,11 @@ final class EntityDescriptionsTests: XCTestCase {
 
     func testSchemaTokensWithoutDescriptions() throws {
         // Skip if tokenizer not available
-        let tokenizerPath = URL(fileURLWithPath: "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/gliner2-base-v1")
+        let tokenizerPath = URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("gliner2-base-v1")
         guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
             throw XCTSkip("Tokenizer not available at \(tokenizerPath.path)")
         }

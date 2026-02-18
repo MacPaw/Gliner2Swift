@@ -7,7 +7,11 @@ import XCTest
 final class DescriptionParityTests: XCTestCase {
 
     func testEntityDescriptionsParity() throws {
-        let tokenizerPath = URL(fileURLWithPath: "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/gliner2-base-v1")
+        let tokenizerPath = URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("gliner2-base-v1")
         guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
             throw XCTSkip("Tokenizer not available")
         }
@@ -45,7 +49,11 @@ final class DescriptionParityTests: XCTestCase {
     }
 
     func testStructureDescriptionsParity() throws {
-        let tokenizerPath = URL(fileURLWithPath: "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/gliner2-base-v1")
+        let tokenizerPath = URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("gliner2-base-v1")
         guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
             throw XCTSkip("Tokenizer not available")
         }
@@ -84,7 +92,11 @@ final class DescriptionParityTests: XCTestCase {
     }
 
     func testEntityWithoutDescriptionsParity() throws {
-        let tokenizerPath = URL(fileURLWithPath: "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/gliner2-base-v1")
+        let tokenizerPath = URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("gliner2-base-v1")
         guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
             throw XCTSkip("Tokenizer not available")
         }
@@ -113,7 +125,11 @@ final class DescriptionParityTests: XCTestCase {
     }
 
     func testStructureWithoutDescriptionsParity() throws {
-        let tokenizerPath = URL(fileURLWithPath: "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/gliner2-base-v1")
+        let tokenizerPath = URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("gliner2-base-v1")
         guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
             throw XCTSkip("Tokenizer not available")
         }

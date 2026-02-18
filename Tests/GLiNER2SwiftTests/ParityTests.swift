@@ -28,8 +28,12 @@ struct FixtureLoader {
             URL(fileURLWithPath: #file)
                 .deletingLastPathComponent()
                 .appendingPathComponent("Fixtures"),
-            // Absolute path fallback
-            URL(fileURLWithPath: "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/Tests/GLiNER2SwiftTests/Fixtures")
+            // Project root fallback
+            URL(fileURLWithPath: #file)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("Tests/GLiNER2SwiftTests/Fixtures")
         ]
 
         for path in possiblePaths.compactMap({ $0 }) {
