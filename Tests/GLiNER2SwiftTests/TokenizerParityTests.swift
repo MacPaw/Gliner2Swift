@@ -20,8 +20,12 @@ final class TokenizerParityTests: XCTestCase {
         if let envPath = ProcessInfo.processInfo.environment["GLINER2_WEIGHTS_PATH"] {
             return envPath
         }
-        // Default path for local testing
-        return "/Users/tmwstw/Documents/mnemos/GLiNER2/weights"
+        // Default: weights directory at project root
+        return URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("weights").path
     }()
 
     /// Path to fixtures directory

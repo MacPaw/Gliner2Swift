@@ -19,7 +19,16 @@ final class ComponentParityTests: XCTestCase {
 
     // MARK: - Configuration
 
-    static let weightsPath = "/Users/tmwstw/Documents/mnemos/GLiNER2/weights"
+    static let weightsPath: String = {
+        if let envPath = ProcessInfo.processInfo.environment["GLINER2_WEIGHTS_PATH"] {
+            return envPath
+        }
+        return URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("weights").path
+    }()
     static let fixturesPath = URL(fileURLWithPath: #file)
         .deletingLastPathComponent()
         .appendingPathComponent("Fixtures")
