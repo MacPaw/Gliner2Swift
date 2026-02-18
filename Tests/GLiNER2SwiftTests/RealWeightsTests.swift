@@ -23,8 +23,8 @@ import MLXNN
 final class RealWeightsTests: XCTestCase {
 
     // Path to weights directory (relative to project root)
-    static let weightsPath = "/Users/tmwstw/Documents/mnemos/GLiNER2/weights"
-    static let fixturesPath = "/Users/tmwstw/Documents/mnemos/GLiNER2/GLiNER2Swift/Tests/GLiNER2SwiftTests/Fixtures/inference"
+    static let weightsPath = "../weights"
+    static let fixturesPath = "./Fixtures/inference"
 
     /// Skip test if MLX Metal is not available (e.g., in CLI environment)
     /// In Xcode with GPU access, this will NOT skip.
