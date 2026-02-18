@@ -17,6 +17,7 @@ Swift/MLX implementation of [GLiNER2](https://github.com/fastino-ai/gliner2) - a
 - [Architecture](#architecture)
 - [Performance](#performance)
 - [Work in Progress](#work-in-progress)
+- [Contributing](#contributing)
 - [Acknowledgments](#acknowledgments)
 
 ## Features
@@ -134,6 +135,10 @@ This is an active port of the [Python GLiNER2](https://github.com/fastino-ai/gli
 - **Additional GLiNER models** - Currently only `deberta-v3-base` is supported; other model variants are not yet available
 
 Contributions and PRs are welcome!
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on submitting PRs, branch naming conventions, and parity testing requirements.
 
 ## Acknowledgments
 
