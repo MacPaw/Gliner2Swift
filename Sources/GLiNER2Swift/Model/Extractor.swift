@@ -225,16 +225,83 @@ public struct SpanInfo {
 // MARK: - Weight Loading
 
 extension Extractor {
-    /// Load all weights from a single combined SafeTensors file
+
+    // MARK: - Format Detection
+
+    /// Detect whether weights are in raw PyTorch format (snake_case keys)
+    /// vs pre-converted format (camelCase keys from convert_weights.py).
+    private static func isRawPyTorchFormat(_ weights: [String: MLXArray]) -> Bool {
+        weights.keys.contains(where: { $0.hasPrefix("span_rep.") })
+    }
+
+    // MARK: - Key Sanitization
+
+    /// Key mappings from raw PyTorch snake_case to converted camelCase format.
+    /// Ordered longest-prefix-first to avoid false prefix matches.
+    private static let keyMappings: [(String, String)] = [
+        // Span representation
+        ("span_rep.span_rep_layer.project_start", "spanRep.spanRepLayer.projectStart"),
+        ("span_rep.span_rep_layer.project_end", "spanRep.spanRepLayer.projectEnd"),
+        ("span_rep.span_rep_layer.out_project", "spanRep.spanRepLayer.outProject"),
+        // DownscaledTransformer (before shorter count_embed prefixes)
+        ("count_embed.transformer.transformer.layers", "countEmbed.transformer.transformerLayers"),
+        ("count_embed.transformer.in_projector", "countEmbed.transformer.inProjector"),
+        ("count_embed.transformer.out_projector", "countEmbed.transformer.outProjector"),
+        // GRU keys (full terminal keys, no suffix)
+        ("count_embed.gru.weight_ih_l0", "countEmbed.gru.weightIH"),
+        ("count_embed.gru.weight_hh_l0", "countEmbed.gru.weightHH"),
+        ("count_embed.gru.bias_ih_l0", "countEmbed.gru.biasIH"),
+        ("count_embed.gru.bias_hh_l0", "countEmbed.gru.biasHH"),
+        // Count embedding
+        ("count_embed.pos_embedding", "countEmbed.posEmbedding"),
+        // Classifier MLP (index 2→1, skipping ReLU)
+        ("classifier.2", "classifier.layers.1"),
+        ("classifier.0", "classifier.layers.0"),
+        // Count prediction MLP (same index shift)
+        ("count_pred.2", "countPred.layers.1"),
+        ("count_pred.0", "countPred.layers.0"),
+    ]
+
+    /// Remap raw PyTorch weight keys to the converted format expected by loadWeights methods.
     ///
-    /// This is the preferred method. The combined file contains both encoder
-    /// and model weights with the following key structure:
-    /// - Encoder weights: `encoder.embeddings.*`, `encoder.encoder.*`
-    /// - Model weights: `spanRep.*`, `classifier.*`, `countPred.*`, `countEmbed.*`
+    /// If the weights are already in converted format (detected by absence of `span_rep.` keys),
+    /// they are returned unchanged. Encoder weights (`encoder.*`) pass through unmodified.
+    ///
+    /// This eliminates the need for the Python `convert_weights.py` script.
+    public static func sanitize(weights: [String: MLXArray]) -> [String: MLXArray] {
+        guard isRawPyTorchFormat(weights) else { return weights }
+
+        var result: [String: MLXArray] = [:]
+        for (key, value) in weights {
+            if key.hasPrefix("encoder.") {
+                // Encoder weights pass through unchanged
+                result[key] = value
+            } else {
+                // Apply first matching prefix replacement
+                var newKey = key
+                for (prefix, replacement) in keyMappings {
+                    if key.hasPrefix(prefix) {
+                        newKey = replacement + key.dropFirst(prefix.count)
+                        break
+                    }
+                }
+                result[newKey] = value
+            }
+        }
+        return result
+    }
+
+    // MARK: - Weight Loading
+
+    /// Load all weights from a single combined SafeTensors file.
+    ///
+    /// Auto-detects whether the file contains raw PyTorch keys or pre-converted keys.
+    /// Both formats are supported transparently.
     ///
     /// - Parameter url: URL to model.safetensors (combined weights file)
     public func loadWeights(from url: URL) throws {
-        let weights = try SafeTensorsLoader.load(from: url)
+        let rawWeights = try loadArrays(url: url)
+        let weights = Extractor.sanitize(weights: rawWeights)
 
         // Load encoder weights (keys starting with "encoder.")
         encoder.loadWeights(weights, prefix: "encoder")
@@ -250,11 +317,12 @@ extension Extractor {
     ///   - encoderWeightsUrl: URL to encoder_weights.safetensors
     public func loadWeights(modelWeightsUrl: URL, encoderWeightsUrl: URL) throws {
         // Load model weights
-        let modelWeights = try SafeTensorsLoader.load(from: modelWeightsUrl)
+        let rawModelWeights = try loadArrays(url: modelWeightsUrl)
+        let modelWeights = Extractor.sanitize(weights: rawModelWeights)
         loadModelWeights(modelWeights)
 
         // Load encoder weights
-        let encoderWeights = try SafeTensorsLoader.load(from: encoderWeightsUrl)
+        let encoderWeights = try loadArrays(url: encoderWeightsUrl)
         encoder.loadWeights(encoderWeights, prefix: "encoder")
     }
 

@@ -144,4 +144,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on submitting PRs, branch 
 
 - [GLiNER2](https://github.com/fastino-ai/gliner2) - Original Python implementation
 - [MLX](https://github.com/ml-explore/mlx) - Apple's ML framework
-- [swift-transformers](https://github.com/huggingface/swift-transformers) - Tokenizer support

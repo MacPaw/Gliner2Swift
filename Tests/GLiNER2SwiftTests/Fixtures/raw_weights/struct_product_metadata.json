@@ -1,0 +1,10 @@
+{
+  "text": "iPhone 15 Pro costs $999 and is made by Apple.",
+  "structure_name": "product",
+  "fields": [
+    "name",
+    "price",
+    "manufacturer"
+  ],
+  "threshold": 0.5
+}

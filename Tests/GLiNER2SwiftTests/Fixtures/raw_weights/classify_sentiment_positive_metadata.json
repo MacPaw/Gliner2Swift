@@ -1,0 +1,11 @@
+{
+  "text": "Great product! I love it.",
+  "task": "sentiment",
+  "labels": [
+    "positive",
+    "negative",
+    "neutral"
+  ],
+  "multi_label": false,
+  "threshold": 0.5
+}

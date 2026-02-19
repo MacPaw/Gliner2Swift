@@ -1,0 +1,5 @@
+{
+  "model_path": "gliner2-base-v1",
+  "weights_format": "raw_pytorch",
+  "description": "Fixtures generated from raw PyTorch model.safetensors"
+}

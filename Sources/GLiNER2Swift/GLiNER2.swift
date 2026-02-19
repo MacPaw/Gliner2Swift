@@ -41,58 +41,50 @@ public class GLiNER2 {
 
     /// Load model from HuggingFace repository or local directory
     ///
-    /// - Parameter pathOrRepo: HuggingFace repo ID or local path
+    /// - Parameters:
+    ///   - pathOrRepo: HuggingFace repo ID or local path
+    ///   - progressHandler: Optional progress callback for Hub downloads
     /// - Returns: Initialized GLiNER2 model
-    public static func fromPretrained(_ pathOrRepo: String) async throws -> GLiNER2 {
+    public static func fromPretrained(
+        _ pathOrRepo: String,
+        progressHandler: @Sendable @escaping (Progress) -> Void = { _ in }
+    ) async throws -> GLiNER2 {
         // Determine if local path or HuggingFace repo
         let isLocalPath = FileManager.default.fileExists(atPath: pathOrRepo)
 
-        let configUrl: URL
+        let baseUrl: URL
+        if isLocalPath {
+            baseUrl = URL(fileURLWithPath: pathOrRepo)
+        } else {
+            // Download from HuggingFace Hub (uses shared ~/.cache/huggingface/hub/ cache)
+            baseUrl = try await downloadModelDirectory(
+                repoId: pathOrRepo,
+                progressHandler: progressHandler
+            )
+        }
+
+        // Resolve file URLs from the model directory
+        let configUrl = baseUrl.appendingPathComponent("config.json")
+
         var combinedWeightsUrl: URL?
         var splitModelWeightsUrl: URL?
         var splitEncoderWeightsUrl: URL?
 
-        if isLocalPath {
-            // Local directory
-            let baseUrl = URL(fileURLWithPath: pathOrRepo)
-            configUrl = baseUrl.appendingPathComponent("config.json")
-
-            // Try single combined file first (preferred)
-            let combinedPath = baseUrl.appendingPathComponent("model.safetensors")
-            if FileManager.default.fileExists(atPath: combinedPath.path) {
-                combinedWeightsUrl = combinedPath
-            } else {
-                // Fall back to split files
-                let modelWeightsPath = baseUrl.appendingPathComponent("gliner2_weights.safetensors")
-                let encoderWeightsPath = baseUrl.appendingPathComponent("encoder_weights.safetensors")
-
-                if FileManager.default.fileExists(atPath: modelWeightsPath.path) &&
-                   FileManager.default.fileExists(atPath: encoderWeightsPath.path) {
-                    splitModelWeightsUrl = modelWeightsPath
-                    splitEncoderWeightsUrl = encoderWeightsPath
-                } else {
-                    throw GLiNER2Error.fileNotFound("model.safetensors or gliner2_weights.safetensors + encoder_weights.safetensors")
-                }
-            }
+        // Try single combined file first (preferred)
+        let combinedPath = baseUrl.appendingPathComponent("model.safetensors")
+        if FileManager.default.fileExists(atPath: combinedPath.path) {
+            combinedWeightsUrl = combinedPath
         } else {
-            // Download from HuggingFace Hub
-            let files = try await HuggingFaceLoader.downloadModel(repo: pathOrRepo)
+            // Fall back to split files
+            let modelWeightsPath = baseUrl.appendingPathComponent("gliner2_weights.safetensors")
+            let encoderWeightsPath = baseUrl.appendingPathComponent("encoder_weights.safetensors")
 
-            guard let config = files["config.json"] else {
-                throw GLiNER2Error.fileNotFound("config.json")
-            }
-            configUrl = config
-
-            // Try combined file first (preferred)
-            if let combined = files["model.safetensors"] {
-                combinedWeightsUrl = combined
-            } else if let modelW = files["gliner2_weights.safetensors"],
-                      let encoderW = files["encoder_weights.safetensors"] {
-                // Fall back to split files
-                splitModelWeightsUrl = modelW
-                splitEncoderWeightsUrl = encoderW
+            if FileManager.default.fileExists(atPath: modelWeightsPath.path) &&
+               FileManager.default.fileExists(atPath: encoderWeightsPath.path) {
+                splitModelWeightsUrl = modelWeightsPath
+                splitEncoderWeightsUrl = encoderWeightsPath
             } else {
-                throw GLiNER2Error.fileNotFound("model weights (model.safetensors or gliner2_weights.safetensors + encoder_weights.safetensors)")
+                throw GLiNER2Error.fileNotFound("model.safetensors or gliner2_weights.safetensors + encoder_weights.safetensors")
             }
         }
 
@@ -100,7 +92,6 @@ public class GLiNER2 {
         let config = try ExtractorConfig.load(from: configUrl)
 
         // 2. Initialize processor with tokenizer
-        // Convert ExtractorConfig.TokenPoolingType to SchemaTransformer.TokenPoolingType
         let poolingType: TokenPoolingType
         switch config.tokenPooling {
         case .first: poolingType = .first
@@ -108,25 +99,10 @@ public class GLiNER2 {
         case .max: poolingType = .max
         }
 
-        let processor: SchemaTransformer
-        if isLocalPath {
-            // Load tokenizer from local directory (synchronous with custom tokenizer)
-            processor = try SchemaTransformer.createFromLocalDirectory(
-                directoryUrl: URL(fileURLWithPath: pathOrRepo),
-                tokenPooling: poolingType
-            )
-        } else {
-            // For HuggingFace repos, we need to download first then load locally
-            let files = try await HuggingFaceLoader.downloadModel(repo: pathOrRepo)
-            guard let tokenizerUrl = files["tokenizer.json"] else {
-                throw GLiNER2Error.fileNotFound("tokenizer.json")
-            }
-            let tokenizerDir = tokenizerUrl.deletingLastPathComponent()
-            processor = try SchemaTransformer.createFromLocalDirectory(
-                directoryUrl: tokenizerDir,
-                tokenPooling: poolingType
-            )
-        }
+        let processor = try SchemaTransformer.createFromLocalDirectory(
+            directoryUrl: baseUrl,
+            tokenPooling: poolingType
+        )
 
         // 3. Create model instance
         let gliner2 = GLiNER2(config: config, processor: processor)

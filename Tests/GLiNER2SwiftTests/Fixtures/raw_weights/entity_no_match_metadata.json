@@ -1,0 +1,8 @@
+{
+  "text": "The weather is nice today.",
+  "entity_types": [
+    "person",
+    "company"
+  ],
+  "threshold": 0.5
+}
