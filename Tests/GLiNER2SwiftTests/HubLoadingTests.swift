@@ -18,7 +18,16 @@ import Hub
 final class HubLoadingTests: XCTestCase {
 
     static let repoId = "fastino/gliner2-base-v1"
-    static let localWeightsPath = "/Users/tmwstw/Documents/mnemos/GLiNER2/weights"
+    static let localWeightsPath: String = {
+        if let envPath = ProcessInfo.processInfo.environment["GLINER2_WEIGHTS_PATH"] {
+            return envPath
+        }
+        return URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("weights").path
+    }()
 
     // Path to raw_weights fixtures (same fixtures used by RawWeightsParityTests)
     static let fixturesPath: String = {

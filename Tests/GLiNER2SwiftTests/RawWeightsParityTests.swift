@@ -25,9 +25,15 @@ final class RawWeightsParityTests: XCTestCase {
     static let rawModelPath = {
         // Try relative to repo root
         let candidates = [
-            // From repo root
-            "/Users/tmwstw/Documents/mnemos/GLiNER2/gliner2-base-v1",
-        ]
+            // From env var
+            ProcessInfo.processInfo.environment["GLINER2_MODEL_PATH"],
+            // Relative to project root
+            URL(fileURLWithPath: #file)
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .deletingLastPathComponent()
+                .appendingPathComponent("gliner2-base-v1").path,
+        ].compactMap { $0 }
         for path in candidates {
             if FileManager.default.fileExists(atPath: path + "/model.safetensors") {
                 return path
