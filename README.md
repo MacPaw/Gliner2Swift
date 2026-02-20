@@ -5,7 +5,7 @@
 [![Twitter](https://img.shields.io/static/v1?label=Twitter&message=@MacPaw&color=CA1F67)](https://twitter.com/MacPaw)
 
 Swift/MLX implementation of [GLiNER2](https://github.com/fastino-ai/gliner2) - a unified schema-based information extraction framework.
-
+([Article](https://research.macpaw.com/publications/gliner2-swift)) 
 ## Table of Contents
 
 - [Features](#features)
@@ -144,4 +144,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on submitting PRs, branch 
 
 - [GLiNER2](https://github.com/fastino-ai/gliner2) - Original Python implementation
 - [MLX](https://github.com/ml-explore/mlx) - Apple's ML framework
-- [swift-transformers](https://github.com/huggingface/swift-transformers) - Tokenizer support

@@ -17,7 +17,7 @@ let package = Package(
     dependencies: [
         // MLX Swift - Apple's ML framework for Apple Silicon
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.18.0"),
-        // For tokenizer support
+        // For Hub download and tokenizer support
         .package(url: "https://github.com/huggingface/swift-transformers", from: "1.1.0"),
     ],
     targets: [
@@ -28,6 +28,7 @@ let package = Package(
                 .product(name: "MLXFast", package: "mlx-swift"),
                 .product(name: "MLXNN", package: "mlx-swift"),
                 .product(name: "MLXRandom", package: "mlx-swift"),
+                .product(name: "Hub", package: "swift-transformers"),
                 .product(name: "Tokenizers", package: "swift-transformers"),
             ],
             path: "Sources/GLiNER2Swift"

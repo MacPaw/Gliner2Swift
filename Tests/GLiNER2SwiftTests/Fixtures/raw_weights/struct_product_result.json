@@ -1,0 +1,30 @@
+{
+  "product": [
+    {
+      "name": [
+        {
+          "text": "iPhone 15 Pro",
+          "confidence": 1.0,
+          "start": 0,
+          "end": 13
+        }
+      ],
+      "price": [
+        {
+          "text": "$999",
+          "confidence": 1.0,
+          "start": 20,
+          "end": 24
+        }
+      ],
+      "manufacturer": [
+        {
+          "text": "Apple",
+          "confidence": 0.9999997615814209,
+          "start": 40,
+          "end": 45
+        }
+      ]
+    }
+  ]
+}

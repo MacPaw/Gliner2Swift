@@ -1,0 +1,8 @@
+{
+  "text": "Tim Cook is CEO of Apple.",
+  "entity_types": [
+    "person",
+    "company"
+  ],
+  "threshold": 0.5
+}

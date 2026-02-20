@@ -1,0 +1,10 @@
+{
+  "text": "John Smith is 35 years old and lives in New York.",
+  "structure_name": "person_info",
+  "fields": [
+    "name",
+    "age",
+    "location"
+  ],
+  "threshold": 0.5
+}

@@ -1,0 +1,9 @@
+{
+  "text": "John and Jane work at Google in Mountain View.",
+  "entity_types": [
+    "person",
+    "organization",
+    "location"
+  ],
+  "threshold": 0.5
+}

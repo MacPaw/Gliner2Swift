@@ -1,0 +1,11 @@
+{
+  "text": "Terrible service. Very disappointed.",
+  "task": "sentiment",
+  "labels": [
+    "positive",
+    "negative",
+    "neutral"
+  ],
+  "multi_label": false,
+  "threshold": 0.5
+}
