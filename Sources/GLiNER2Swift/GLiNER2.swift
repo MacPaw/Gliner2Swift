@@ -26,6 +26,9 @@ public class GLiNER2 {
     /// Schema processor
     public let processor: SchemaTransformer
 
+    /// URL of the loaded base weights (for adapter loading)
+    private(set) var baseWeightsUrl: URL?
+
     /// Initialize GLiNER2
     ///
     /// - Parameters:
@@ -110,12 +113,14 @@ public class GLiNER2 {
         // 4. Load weights - try combined file first, fall back to split files
         if let combinedUrl = combinedWeightsUrl {
             try gliner2.model.loadWeights(from: combinedUrl)
+            gliner2.baseWeightsUrl = combinedUrl
         } else if let modelUrl = splitModelWeightsUrl,
                   let encoderUrl = splitEncoderWeightsUrl {
             try gliner2.model.loadWeights(
                 modelWeightsUrl: modelUrl,
                 encoderWeightsUrl: encoderUrl
             )
+            gliner2.baseWeightsUrl = modelUrl
         } else {
             throw GLiNER2Error.fileNotFound("model weights")
         }
@@ -150,6 +155,56 @@ public class GLiNER2 {
         case .failure(let error):
             throw error
         }
+    }
+
+    // MARK: - LoRA Adapter
+
+    /// Load a LoRA adapter onto this model.
+    ///
+    /// Re-loads base weights with LoRA deltas merged in.
+    /// Produces identical results to Python's `model.load_adapter()` followed by `model.merge_lora()`.
+    ///
+    /// - Parameter adapterPath: Path to adapter directory containing adapter_config.json + adapter_weights.safetensors
+    public func loadAdapter(from adapterPath: String) throws {
+        guard let baseUrl = baseWeightsUrl else {
+            throw GLiNER2Error.weightLoadingFailed("Base weights URL not available for adapter merging")
+        }
+        let adapterUrl = URL(fileURLWithPath: adapterPath)
+        try model.loadWeightsWithLoRA(baseWeightsUrl: baseUrl, adapterPath: adapterUrl)
+        model.train(false)
+        model.freeze()
+    }
+
+    /// Unload the current LoRA adapter, restoring original base weights.
+    ///
+    /// Re-loads the base weights without any LoRA deltas applied.
+    /// Matches Python's `model.unload_adapter()`.
+    public func unloadAdapter() throws {
+        guard let baseUrl = baseWeightsUrl else {
+            throw GLiNER2Error.weightLoadingFailed("Base weights URL not available")
+        }
+        try model.loadWeights(from: baseUrl)
+        model.train(false)
+        model.freeze()
+    }
+
+    /// Load model from pretrained with optional LoRA adapter.
+    ///
+    /// - Parameters:
+    ///   - pathOrRepo: HuggingFace repo ID or local path
+    ///   - adapterPath: Optional path to LoRA adapter directory
+    ///   - progressHandler: Optional progress callback for Hub downloads
+    /// - Returns: Initialized GLiNER2 model with adapter merged
+    public static func fromPretrained(
+        _ pathOrRepo: String,
+        adapterPath: String?,
+        progressHandler: @Sendable @escaping (Progress) -> Void = { _ in }
+    ) async throws -> GLiNER2 {
+        let model = try await fromPretrained(pathOrRepo, progressHandler: progressHandler)
+        if let adapterPath = adapterPath {
+            try model.loadAdapter(from: adapterPath)
+        }
+        return model
     }
 
     // MARK: - Schema Builder
