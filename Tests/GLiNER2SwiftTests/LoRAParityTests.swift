@@ -5,8 +5,8 @@
 // to the Python implementation.
 //
 // Prerequisites:
-//   1. Base model at: /Users/tmwstw/Documents/mnemos/GLiNER2/gliner2-base-v1/
-//   2. Adapter at:    /Users/tmwstw/Documents/mnemos/GLiNER2/gliner2-base-v1/final/
+//   1. Base model at GLINER2_WEIGHTS_PATH (or <project_root>/weights/)
+//   2. Adapter at GLINER2_ADAPTER_PATH (or <base_model>/final/)
 //   3. Fixtures at:   Tests/GLiNER2SwiftTests/Fixtures/lora/
 //      Generate with: uv run python GLiNER2Swift/scripts/generate_lora_fixtures.py
 
@@ -19,9 +19,25 @@ import MLXNN
 
 final class LoRAParityTests: XCTestCase {
 
-    // Paths
-    static let baseModelPath = "/Users/tmwstw/Documents/mnemos/GLiNER2/gliner2-base-v1"
-    static let adapterPath = "/Users/tmwstw/Documents/mnemos/GLiNER2/gliner2-base-v1/final"
+    // Paths – resolved from env vars, falling back to project-relative defaults
+    static let baseModelPath: String = {
+        if let envPath = ProcessInfo.processInfo.environment["GLINER2_WEIGHTS_PATH"] {
+            return envPath
+        }
+        return URL(fileURLWithPath: #file)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("weights").path
+    }()
+
+    static let adapterPath: String = {
+        if let envPath = ProcessInfo.processInfo.environment["GLINER2_ADAPTER_PATH"] {
+            return envPath
+        }
+        return URL(fileURLWithPath: baseModelPath)
+            .appendingPathComponent("final").path
+    }()
 
     // Fixture loader
     var loader: InferenceFixtureLoader!
