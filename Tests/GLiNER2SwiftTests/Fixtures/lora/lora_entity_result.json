@@ -1,0 +1,27 @@
+{
+  "text": "Tim Cook is CEO of Apple.",
+  "entity_types": [
+    "person",
+    "company"
+  ],
+  "result": {
+    "entities": {
+      "person": [
+        {
+          "text": "Tim Cook",
+          "confidence": 0.9999997615814209,
+          "start": 0,
+          "end": 8
+        }
+      ],
+      "company": [
+        {
+          "text": "Apple",
+          "confidence": 0.9999986886978149,
+          "start": 19,
+          "end": 24
+        }
+      ]
+    }
+  }
+}

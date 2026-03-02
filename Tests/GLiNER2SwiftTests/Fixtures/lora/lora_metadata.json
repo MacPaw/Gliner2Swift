@@ -1,0 +1,33 @@
+{
+  "base_model_path": "gliner2-base-v1",
+  "adapter_path": "gliner2-base-v1/final",
+  "adapter_config": {
+    "lora_r": 16,
+    "lora_alpha": 32.0,
+    "lora_dropout": 0.05,
+    "target_modules": [
+      "classifier",
+      "count_embed",
+      "count_pred",
+      "encoder",
+      "span_rep"
+    ]
+  },
+  "entity_test": {
+    "text": "Tim Cook is CEO of Apple.",
+    "entity_types": [
+      "person",
+      "company"
+    ]
+  },
+  "classify_test": {
+    "text": "I love this product! It's amazing.",
+    "task": "sentiment",
+    "labels": [
+      "positive",
+      "negative"
+    ]
+  },
+  "encoder_diff_mean": 0.00018773507326841354,
+  "encoder_diff_max": 0.01097869873046875
+}

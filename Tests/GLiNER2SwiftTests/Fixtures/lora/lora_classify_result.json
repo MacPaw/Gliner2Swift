@@ -1,0 +1,14 @@
+{
+  "text": "I love this product! It's amazing.",
+  "task": "sentiment",
+  "labels": [
+    "positive",
+    "negative"
+  ],
+  "result": {
+    "sentiment": {
+      "label": "positive",
+      "confidence": 1.0
+    }
+  }
+}

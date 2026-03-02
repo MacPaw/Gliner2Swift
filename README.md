@@ -14,6 +14,7 @@ Swift/MLX implementation of [GLiNER2](https://github.com/fastino-ai/gliner2) - a
 - [Quick Start](#quick-start)
 - [Available Models](#available-models)
 - [API Reference](#api-reference)
+- [LoRA Adapters](#lora-adapters)
 - [Architecture](#architecture)
 - [Performance](#performance)
 - [Work in Progress](#work-in-progress)
@@ -26,6 +27,7 @@ Swift/MLX implementation of [GLiNER2](https://github.com/fastino-ai/gliner2) - a
 - Text Classification
 - Structured Data Extraction
 - Relation Extraction
+- LoRA adapter loading (merge at load time, zero runtime overhead)
 - Native Apple Silicon support via MLX
 - CPU-first design - no GPU required
 
@@ -109,6 +111,42 @@ let schema = model.createSchema()
 let result = try model.extract(from: text, schema: schema)
 ```
 
+## LoRA Adapters
+
+GLiNER2Swift supports loading LoRA (Low-Rank Adaptation) adapters trained with the Python GLiNER2 framework. Adapters are merged into the base weights at load time, giving identical results to Python with zero runtime overhead.
+
+### Loading an Adapter
+
+```swift
+// One-step: load base model + adapter together
+let model = try await GLiNER2.fromPretrained(
+    "fastino/gliner2-base-v1",
+    adapterPath: "/path/to/adapter"
+)
+
+// Two-step: load base model first, then attach adapter
+let model = try await GLiNER2.fromPretrained("fastino/gliner2-base-v1")
+try model.loadAdapter(from: "/path/to/adapter")
+```
+
+### Adapter Directory Structure
+
+The adapter directory must contain:
+- `adapter_config.json` - LoRA configuration (rank, alpha, target modules)
+- `adapter_weights.safetensors` - LoRA weight matrices
+
+All parameters (rank, alpha, dropout, target modules) are read from `adapter_config.json` - any valid LoRA configuration is supported.
+
+### How It Works
+
+Instead of maintaining separate LoRA modules at runtime, weights are merged at load time:
+
+```
+W_merged = W_base + (lora_B @ lora_A) * (alpha / r)
+```
+
+This produces numerically identical results to Python's `model.load_adapter()` + `model.merge_lora()` pipeline.
+
 ## Architecture
 
 GLiNER2Swift is a direct port of the Python GLiNER2 implementation, achieving numerical parity with the reference implementation:
@@ -131,7 +169,6 @@ This is an active port of the [Python GLiNER2](https://github.com/fastino-ai/gli
 
 - **Training loop** - Fine-tuning and training from scratch are not yet supported
 - **Relation extraction** - Schema-based relation extraction between entities
-- **LoRA adapters** - Low-rank adaptation for efficient fine-tuning
 - **Additional GLiNER models** - Currently only `deberta-v3-base` is supported; other model variants are not yet available
 
 Contributions and PRs are welcome!

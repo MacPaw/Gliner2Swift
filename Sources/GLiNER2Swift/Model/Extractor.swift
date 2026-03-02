@@ -368,6 +368,32 @@ extension Extractor {
         encoder.loadWeights(weights, prefix: "encoder")
     }
 
+    /// Load base weights with LoRA adapter merged in.
+    ///
+    /// Loads base weights, applies LoRA deltas (W += B@A * alpha/r),
+    /// then sanitizes keys and loads merged weights into the model.
+    ///
+    /// - Parameters:
+    ///   - baseWeightsUrl: URL to model.safetensors (base model)
+    ///   - adapterPath: Directory containing adapter_config.json + adapter_weights.safetensors
+    public func loadWeightsWithLoRA(baseWeightsUrl: URL, adapterPath: URL) throws {
+        // 1. Load raw base weights (Python keys, before sanitization)
+        var rawWeights = try loadArrays(url: baseWeightsUrl)
+
+        // 2. Load adapter config and weights
+        let config = try LoRAAdapterConfig.load(from: adapterPath)
+        let adapterUrl = adapterPath.appendingPathComponent("adapter_weights.safetensors")
+        let adapterWeights = try loadArrays(url: adapterUrl)
+
+        // 3. Merge LoRA deltas into base weights (in Python key space)
+        mergeLoRAWeights(into: &rawWeights, adapterWeights: adapterWeights, config: config)
+
+        // 4. Sanitize and load (reuses existing code path)
+        let weights = Extractor.sanitize(weights: rawWeights)
+        encoder.loadWeights(weights, prefix: "encoder")
+        loadModelWeights(weights)
+    }
+
     private func loadMLPWeights(_ mlp: Sequential, weights: [String: MLXArray], prefix: String) {
         // MLP structure: Linear → ReLU → Linear
         // Swift Sequential layers array: [0]=Linear, [1]=ReLU, [2]=Linear
