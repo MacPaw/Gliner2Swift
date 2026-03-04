@@ -47,7 +47,7 @@ public struct MappedIndex: Sendable, Equatable {
 // MARK: - Transformed Record
 
 /// Single transformed record ready for batching.
-public struct TransformedRecord: Sendable {
+public struct TransformedRecord {
     /// Tokenized input IDs
     public let inputIds: [Int]
 
@@ -87,7 +87,7 @@ public struct TransformedRecord: Sendable {
 // MARK: - Preprocessed Batch
 
 /// GPU-ready batch for training/inference.
-public struct PreprocessedBatch: Sendable {
+public struct PreprocessedBatch {
     /// Input token IDs [batch, max_seq_len]
     public let inputIds: MLXArray
 

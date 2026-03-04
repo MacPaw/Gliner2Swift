@@ -20,7 +20,8 @@ import PackageDescription
 let package = Package(
     name: "GLiNER2Swift",
     platforms: [
-        .macOS(.v14)  // Requires macOS 14+ for MLX
+        .macOS(.v14), // Requires macOS 14+ for MLX
+        .iOS(.v17)    // Requires iOS 17+ for MLX
     ],
     products: [
         .library(
