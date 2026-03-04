@@ -173,7 +173,7 @@ public class CustomMultiHeadAttention: Module {
 
         // Attention
         let scale = MLXArray(Foundation.sqrt(Float(headDim)))
-        var scores = MLX.matmul(q, k.transposed(0, 1, 3, 2)) / scale
+        let scores = MLX.matmul(q, k.transposed(0, 1, 3, 2)) / scale
         let attnWeights = MLX.softmax(scores, axis: -1)
 
         // Apply attention

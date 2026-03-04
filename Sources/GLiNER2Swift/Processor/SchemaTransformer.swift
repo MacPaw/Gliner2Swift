@@ -128,7 +128,7 @@ public class SchemaTransformer {
 
         // Tokenize text
         let textTokens = wordSplitter.tokenize(normalizedText, lower: true)
-        var allTextTokens = prefix + textTokens.texts
+        let allTextTokens = prefix + textTokens.texts
         let prefixLen = prefix.count
 
         // Build schema outputs
