@@ -134,6 +134,7 @@ public class GLiNER2 {
                 modelWeightsUrl: modelUrl,
                 encoderWeightsUrl: encoderUrl
             )
+            // For split weights, store the model weights URL (primary)
             gliner2.baseWeightsUrl = modelUrl
         } else {
             throw GLiNER2Error.fileNotFound("model weights")
@@ -141,6 +142,7 @@ public class GLiNER2 {
 
         // 5. Set to evaluation mode (disables dropout)
         gliner2.model.train(false)
+
         gliner2.model.freeze()
 
         return gliner2
@@ -192,7 +194,6 @@ public class GLiNER2 {
     /// Unload the current LoRA adapter, restoring original base weights.
     ///
     /// Re-loads the base weights without any LoRA deltas applied.
-    /// Matches Python's `model.unload_adapter()`.
     public func unloadAdapter() throws {
         guard let baseUrl = baseWeightsUrl else {
             throw GLiNER2Error.weightLoadingFailed("Base weights URL not available")
@@ -1074,12 +1075,21 @@ public class GLiNER2 {
                         dtype: dtype
                     )
 
-                    instance[fieldName] = result
+                    // Match Python: dtype=list always stores (possibly empty) list,
+                    // dtype=str stores None when no match. Validators are
+                    // intentionally ignored on the choice path (engine.py:835-872).
+                    if let r = result {
+                        instance[fieldName] = r
+                    } else if dtype == "list" {
+                        instance[fieldName] = [Any]()
+                    } else {
+                        instance[fieldName] = NSNull()
+                    }
                 } else {
                     // Regular span field: use text scores
                     let fieldScores = instScores[fieldIdx, startIdx...]  // [textLen, maxWidth]
 
-                    let spans = decoder.findSpans(
+                    let rawSpans = decoder.findSpans(
                         scores: fieldScores,
                         threshold: fieldThreshold,
                         textLen: textLen,
@@ -1087,6 +1097,11 @@ public class GLiNER2 {
                         startMap: startMappings,
                         endMap: endMappings
                     )
+
+                    // Apply regex validators as post-threshold filter (engine.py:880-881).
+                    // AND-logic across validators; operates on pre-dedup typed spans
+                    // before overlap resolution in formatSpans.
+                    let spans = rawSpans.filtered(by: fieldMeta?.validators ?? [])
 
                     if dtype == "list" {
                         instance[fieldName] = decoder.formatSpans(
@@ -1116,14 +1131,17 @@ public class GLiNER2 {
                                 instance[fieldName] = first.text
                             }
                         } else {
-                            instance[fieldName] = nil
+                            // Match Python: empty str-dtype field is None, key preserved.
+                            instance[fieldName] = NSNull()
                         }
                     }
                 }
             }
 
-            // Only add if instance has any content
+            // Only add if instance has any content.
+            // Matches Python engine.py:910: any(v is not None and v != [] for v in ...)
             let hasContent = instance.values.contains { value in
+                if value is NSNull { return false }
                 if let arr = value as? [Any], arr.isEmpty { return false }
                 if let str = value as? String, str.isEmpty { return false }
                 return true
@@ -1261,13 +1279,17 @@ public class StructureBuilder {
     ///   - choices: Optional list of choices for classification fields
     ///   - description: Optional description for the field (used in schema tokens)
     ///   - threshold: Optional confidence threshold for this field
+    ///   - validators: Regex validators applied as post-threshold span filter.
+    ///     All must pass (AND-logic). Ignored when `choices` is non-nil, matching
+    ///     Python engine.py:835-872.
     @discardableResult
     public func field(
         _ fieldName: String,
         dtype: String = "list",
         choices: [String]? = nil,
         description: String? = nil,
-        threshold: Float? = nil
+        threshold: Float? = nil,
+        validators: [RegexValidator] = []
     ) -> StructureBuilder {
         if let choices = choices {
             fields[fieldName] = ["value": "", "choices": choices]
@@ -1284,6 +1306,15 @@ public class StructureBuilder {
         if let description = description {
             descriptions[fieldName] = description
         }
+
+        // Persist field metadata so dtype/threshold/choices/validators reach the
+        // extraction path. Matches Python _store_field_metadata (engine.py:154-160).
+        schema.metadata.fieldMetadata["\(name).\(fieldName)"] = FieldMetadata(
+            dtype: dtype,
+            threshold: threshold,
+            choices: choices,
+            validators: validators
+        )
 
         return self
     }
@@ -1339,6 +1370,7 @@ public struct FieldMetadata {
     var dtype: String = "list"
     var threshold: Float?
     var choices: [String]?
+    var validators: [RegexValidator] = []
 }
 
 public struct EntityMetadata {

@@ -19,6 +19,23 @@
 
 import Foundation
 
+/// Errors thrown by `RegexValidator`.
+public enum RegexValidatorError: Error, CustomStringConvertible {
+    /// Pattern contains a construct with divergent semantics between Python `re`
+    /// and `NSRegularExpression` (e.g. atomic groups, possessive quantifiers).
+    case unsupportedConstruct(pattern: String, construct: String)
+
+    public var description: String {
+        switch self {
+        case .unsupportedConstruct(let pattern, let construct):
+            return "RegexValidator: pattern \(pattern.debugDescription) contains " +
+                "unsupported construct \(construct.debugDescription) — this has " +
+                "divergent semantics between Python re and NSRegularExpression and " +
+                "cannot be used in a parity-sensitive validator."
+        }
+    }
+}
+
 /// Regex-based span filter for post-processing.
 ///
 /// Use to filter extracted spans based on regex patterns.
@@ -26,22 +43,45 @@ import Foundation
 /// - `full`: Pattern must match the entire span text
 /// - `partial`: Pattern only needs to appear somewhere in the span text
 ///
+/// ## Python parity
+///
+/// This mirrors `gliner2.inference.engine.RegexValidator`. Default options are
+/// `.caseInsensitive`, matching Python's `flags=re.IGNORECASE`. Validators are
+/// applied only to structure-field span extraction (not NER/relations), matching
+/// Python behavior.
+///
+/// ## Engine differences
+///
+/// `NSRegularExpression` (ICU) is not a drop-in for Python `re`. Known
+/// divergences the user should avoid if strict parity is required:
+/// - Variable-width lookbehind: supported in Python 3.7+, rejected by ICU at
+///   init time (Swift will throw).
+/// - Possessive quantifiers (`*+`, `++`, `?+`, `}+`), atomic groups (`(?>...)`):
+///   available in newer Python and ICU but may exhibit subtle backtracking
+///   differences. Swift throws `RegexValidatorError.unsupportedConstruct` on
+///   these at init time as a best-effort parity guard.
+/// - `\w`, `\d`, `\b`: both engines default to Unicode semantics but exact
+///   character sets differ at the edges.
+///
+/// Thread-safety: `NSRegularExpression`'s matching methods are documented
+/// thread-safe by Apple, so `RegexValidator` is declared `@unchecked Sendable`.
+///
 /// Example:
 /// ```swift
 /// // Only keep spans that look like phone numbers
-/// let phoneValidator = RegexValidator(
+/// let phoneValidator = try RegexValidator(
 ///     pattern: #"\d{3}-\d{3}-\d{4}"#,
 ///     mode: .full
 /// )
 ///
 /// // Exclude spans containing "test"
-/// let excludeTestValidator = RegexValidator(
+/// let excludeTestValidator = try RegexValidator(
 ///     pattern: "test",
 ///     mode: .partial,
 ///     exclude: true
 /// )
 /// ```
-public struct RegexValidator: Sendable {
+public struct RegexValidator: @unchecked Sendable {
     /// The compiled regex pattern
     private let regex: NSRegularExpression
 
@@ -59,6 +99,15 @@ public struct RegexValidator: Sendable {
         case partial
     }
 
+    /// Best-effort token checks for constructs with divergent semantics between
+    /// Python `re` and `NSRegularExpression` (ICU). Matched as raw substrings —
+    /// not perfect (won't exclude these tokens inside character classes) but
+    /// catches the common cases.
+    private static let unsupportedTokens: [String] = [
+        "(?>",  // atomic group
+        "*+", "++", "?+", "}+"  // possessive quantifiers
+    ]
+
     /// Initialize a regex validator
     ///
     /// - Parameters:
@@ -66,13 +115,20 @@ public struct RegexValidator: Sendable {
     ///   - mode: Match mode (default: .full)
     ///   - exclude: If true, invert the match result (default: false)
     ///   - options: Regex options (default: .caseInsensitive)
-    /// - Throws: Error if pattern is invalid
+    /// - Throws:
+    ///   - `RegexValidatorError.unsupportedConstruct` if the pattern contains
+    ///     atomic groups or possessive quantifiers (parity guard).
+    ///   - Any `NSError` thrown by `NSRegularExpression` for invalid syntax
+    ///     (including variable-width lookbehind, which ICU rejects).
     public init(
         pattern: String,
         mode: MatchMode = .full,
         exclude: Bool = false,
         options: NSRegularExpression.Options = .caseInsensitive
     ) throws {
+        for token in Self.unsupportedTokens where pattern.contains(token) {
+            throw RegexValidatorError.unsupportedConstruct(pattern: pattern, construct: token)
+        }
         self.regex = try NSRegularExpression(pattern: pattern, options: options)
         self.mode = mode
         self.exclude = exclude
