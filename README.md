@@ -1,7 +1,10 @@
 # GLiNER2Swift
 <img width="1632" height="640" alt="Image" src="https://github.com/user-attachments/assets/c0c59f91-3ae5-4fb3-a0a0-316f2609a6b3" />
 
-![Swift Workflow](https://github.com/MacPaw/OpenAI/actions/workflows/swift.yml/badge.svg)
+[![Swift](https://github.com/MacPaw/Gliner2Swift/actions/workflows/swift.yml/badge.svg)](https://github.com/MacPaw/Gliner2Swift/actions/workflows/swift.yml)
+[![Platforms](https://img.shields.io/badge/platforms-macOS%2014%20%7C%20iOS%2017-blue)](https://github.com/MacPaw/Gliner2Swift)
+[![Swift](https://img.shields.io/badge/swift-5.9%2B-orange)](https://swift.org)
+[![License](https://img.shields.io/badge/license-Apache%202.0-green)](LICENSE)
 [![Twitter](https://img.shields.io/static/v1?label=Twitter&message=@MacPaw&color=CA1F67)](https://twitter.com/MacPaw)
 
 Swift/MLX implementation of [GLiNER2](https://github.com/fastino-ai/gliner2) - a unified schema-based information extraction framework.
