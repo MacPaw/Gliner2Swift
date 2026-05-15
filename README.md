@@ -1,5 +1,6 @@
 # GLiNER2Swift
-<img width="1632" height="640" alt="Image" src="https://github.com/user-attachments/assets/c0c59f91-3ae5-4fb3-a0a0-316f2609a6b3" />
+
+<img width="2000" height="800" alt="Cover - white@2x" src="https://github.com/user-attachments/assets/a254dd02-88f1-41a4-a649-ce08b9aee00e" />
 
 ![Swift Workflow](https://github.com/MacPaw/OpenAI/actions/workflows/swift.yml/badge.svg)
 [![Twitter](https://img.shields.io/static/v1?label=Twitter&message=@MacPaw&color=CA1F67)](https://twitter.com/MacPaw)
