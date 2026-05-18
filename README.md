@@ -1,5 +1,6 @@
 # GLiNER2Swift
-<img width="1632" height="640" alt="Image" src="https://github.com/user-attachments/assets/c0c59f91-3ae5-4fb3-a0a0-316f2609a6b3" />
+
+<img width="2000" height="800" alt="Cover - white@2x" src="https://github.com/user-attachments/assets/a254dd02-88f1-41a4-a649-ce08b9aee00e" />
 
 [![Swift](https://github.com/MacPaw/Gliner2Swift/actions/workflows/swift.yml/badge.svg)](https://github.com/MacPaw/Gliner2Swift/actions/workflows/swift.yml)
 [![Platforms](https://img.shields.io/badge/platforms-macOS%2014%20%7C%20iOS%2017-blue)](https://github.com/MacPaw/Gliner2Swift)
