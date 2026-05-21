@@ -366,6 +366,146 @@ public class GLiNER2 {
         )
     }
 
+    // MARK: - JSON-style Shortcut API
+
+    /// Parsed components of a field-spec string.
+    public struct ParsedFieldSpec: Sendable, Equatable {
+        public let name: String
+        public let dtype: String
+        public let choices: [String]?
+        public let description: String?
+    }
+
+    /// Parse a field specification string.
+    ///
+    /// Format: `"name::dtype::choices::description"` where every part after
+    /// the name is optional. Mirrors Python `engine.py:_parse_field_spec`
+    /// semantics exactly.
+    ///
+    /// - `dtype`: `"str"` for a single value, `"list"` for multiple (default).
+    /// - `choices`: `"[a|b|c]"` declares enumerated options. When choices are
+    ///   present and dtype is not explicitly set, dtype defaults to `"str"`.
+    /// - `description`: any other part is treated as free-form description.
+    ///
+    /// Examples:
+    /// ```
+    /// "restaurant::str::Restaurant name"
+    /// "seating::[indoor|outdoor|bar]::Seating preference"
+    /// "dietary::[vegetarian|vegan]::list::Dietary restrictions"
+    /// "type::[equity|bond|option]::str::Financial instrument type"
+    /// ```
+    public static func parseFieldSpec(_ spec: String) -> ParsedFieldSpec {
+        let parts = spec.components(separatedBy: "::")
+        let name = parts.first ?? ""
+        var dtype = "list"
+        var choices: [String]? = nil
+        var description: String? = nil
+        var dtypeExplicitlySet = false
+
+        guard parts.count > 1 else {
+            return ParsedFieldSpec(name: name, dtype: dtype, choices: choices, description: description)
+        }
+
+        for part in parts.dropFirst() {
+            if part == "str" || part == "list" {
+                dtype = part
+                dtypeExplicitlySet = true
+            } else if part.hasPrefix("[") && part.hasSuffix("]") {
+                let inner = String(part.dropFirst().dropLast())
+                choices = inner.split(separator: "|").map {
+                    $0.trimmingCharacters(in: .whitespaces)
+                }
+                if !dtypeExplicitlySet {
+                    dtype = "str"
+                }
+            } else {
+                description = part
+            }
+        }
+
+        return ParsedFieldSpec(name: name, dtype: dtype, choices: choices, description: description)
+    }
+
+    /// Extract structured JSON data using a shortcut schema definition.
+    ///
+    /// Mirrors Python `GLiNER2.extract_json(text, structures)`. Each structure
+    /// is defined as `[structureName: [fieldSpec, ...]]` where every field spec
+    /// is a `"name::dtype::choices::description"` string (see `parseFieldSpec`).
+    ///
+    /// Example (financial transactions):
+    /// ```swift
+    /// let result = model.extractJson(
+    ///     text: financialText,
+    ///     structures: [
+    ///         "transaction": [
+    ///             "broker::str::Financial institution or brokerage firm",
+    ///             "amount::str::Transaction amount with currency",
+    ///             "type::[equity|bond|option|future|forex]::str::Type of instrument"
+    ///         ]
+    ///     ]
+    /// )
+    /// ```
+    ///
+    /// Note: Swift `Dictionary` iteration order is not guaranteed, so when
+    /// passing multiple structures the emission order of their schema tokens
+    /// may vary run-to-run. For deterministic ordering across many structures,
+    /// use the `createSchema().structure(...).field(...)` fluent builder
+    /// directly.
+    public func extractJson(
+        text: String,
+        structures: [String: [String]],
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false
+    ) -> [String: Any] {
+        let schema = buildSchemaFromStructures(structures)
+        return extract(
+            text: text,
+            schema: schema,
+            threshold: threshold,
+            includeConfidence: includeConfidence,
+            includeSpans: includeSpans
+        )
+    }
+
+    /// Batch variant of `extractJson`.
+    public func batchExtractJson(
+        texts: [String],
+        structures: [String: [String]],
+        batchSize: Int = 8,
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false
+    ) -> [[String: Any]] {
+        let schema = buildSchemaFromStructures(structures)
+        return batchExtract(
+            texts: texts,
+            schema: schema,
+            batchSize: batchSize,
+            threshold: threshold,
+            includeConfidence: includeConfidence,
+            includeSpans: includeSpans
+        )
+    }
+
+    private func buildSchemaFromStructures(_ structures: [String: [String]]) -> Schema {
+        let schema = createSchema()
+        for (parent, fields) in structures {
+            let builder = schema.structure(parent)
+            for spec in fields {
+                let parsed = Self.parseFieldSpec(spec)
+                _ = builder.field(
+                    parsed.name,
+                    dtype: parsed.dtype,
+                    choices: parsed.choices,
+                    description: parsed.description
+                )
+            }
+            _ = builder.done()
+        }
+        return schema
+    }
+
     // MARK: - Private Helpers
 
     private func normalizeText(_ text: String) -> String {
