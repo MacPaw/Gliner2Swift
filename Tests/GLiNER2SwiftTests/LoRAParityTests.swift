@@ -1,3 +1,17 @@
+// Copyright 2026 MacPaw Way Ltd.
+//
+//    Licensed under the Apache License, Version 2.0 (the "License");
+//    you may not use this file except in compliance with the License.
+//    You may obtain a copy of the License at
+//
+//        http://www.apache.org/licenses/LICENSE-2.0
+//
+//    Unless required by applicable law or agreed to in writing, software
+//    distributed under the License is distributed on an "AS IS" BASIS,
+//    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//    See the License for the specific language governing permissions and
+//    limitations under the License.
+//
 // LoRAParityTests.swift
 // Parity tests for LoRA adapter support in GLiNER2Swift
 //
@@ -5,8 +19,8 @@
 // to the Python implementation.
 //
 // Prerequisites:
-//   1. Base model at GLINER2_WEIGHTS_PATH (or <project_root>/weights/)
-//   2. Adapter at GLINER2_ADAPTER_PATH (or <base_model>/final/)
+//   1. Base model at: /Users/tmwstw/Documents/mnemos/GLiNER2/gliner2-base-v1/
+//   2. Adapter at:    /Users/tmwstw/Documents/mnemos/GLiNER2/gliner2-base-v1/final/
 //   3. Fixtures at:   Tests/GLiNER2SwiftTests/Fixtures/lora/
 //      Generate with: uv run python GLiNER2Swift/scripts/generate_lora_fixtures.py
 
@@ -19,25 +33,9 @@ import MLXNN
 
 final class LoRAParityTests: XCTestCase {
 
-    // Paths – resolved from env vars, falling back to project-relative defaults
-    static let baseModelPath: String = {
-        if let envPath = ProcessInfo.processInfo.environment["GLINER2_WEIGHTS_PATH"] {
-            return envPath
-        }
-        return URL(fileURLWithPath: #file)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("weights").path
-    }()
-
-    static let adapterPath: String = {
-        if let envPath = ProcessInfo.processInfo.environment["GLINER2_ADAPTER_PATH"] {
-            return envPath
-        }
-        return URL(fileURLWithPath: baseModelPath)
-            .appendingPathComponent("final").path
-    }()
+    // Paths
+    static let baseModelPath = "/Users/tmwstw/Documents/mnemos/GLiNER2/gliner2-base-v1"
+    static let adapterPath = "/Users/tmwstw/Documents/mnemos/GLiNER2/gliner2-base-v1/final"
 
     // Fixture loader
     var loader: InferenceFixtureLoader!
@@ -386,7 +384,10 @@ final class LoRAParityTests: XCTestCase {
 
         // Basic entity extraction test
         let result = model.extractEntities(
-            text: "Tim Cook is CEO of Apple.",
+            text: """
+
+
+            """,
             entityTypes: ["person", "company"],
             threshold: 0.5,
             includeConfidence: true
@@ -413,6 +414,10 @@ final class LoRAParityTests: XCTestCase {
 
         let text = "Tim Cook is CEO of Apple."
         let entityTypes = ["person", "company"]
+
+
+
+
 
         // Two-step
         let model1 = try await GLiNER2.fromPretrained(Self.baseModelPath)
@@ -502,5 +507,195 @@ final class LoRAParityTests: XCTestCase {
         print("  Load adapter:   \(String(format: "%.3f", loadTime))s")
         print("  Unload adapter: \(String(format: "%.3f", unloadTime))s")
         print("  Total round-trip: \(String(format: "%.3f", loadTime + unloadTime))s")
+    }
+
+    // MARK: - Test 11: Task Execution Benchmarks
+
+    func testTaskExecutionBenchmarks() async throws {
+        try skipIfNoGPU()
+        try skipIfNoModel()
+        try skipIfNoAdapter()
+
+        // Long sentence for benchmarking
+        let text = """
+        Apple Inc. CEO Tim Cook announced a major partnership with Microsoft Corporation \
+        at their headquarters in Cupertino, California, on January 15, 2026. The deal, \
+        valued at approximately $2.5 billion, involves collaboration between Apple's \
+        artificial intelligence division led by John Giannandrea and Microsoft's Azure \
+        cloud platform managed by Scott Guthrie. The partnership will focus on developing \
+        next-generation machine learning infrastructure across data centers in San Francisco, \
+        Seattle, and Austin. Google's CEO Sundar Pichai and Amazon's Andy Jassy were also \
+        reportedly in discussions for similar ventures. Senior Vice President Craig Federighi \
+        emphasized that this collaboration represents a significant shift in Apple's strategy \
+        toward enterprise cloud services and open-source AI development.
+        """
+
+        // Load model with LoRA adapter
+        let model = try await GLiNER2.fromPretrained(
+            Self.baseModelPath, adapterPath: Self.adapterPath
+        )
+
+        let warmupRuns = 2
+        let benchRuns = 5
+
+        // --- Entity Extraction ---
+        let entityTypes = ["person", "company", "location", "date", "money"]
+
+        // Warmup
+        for _ in 0..<warmupRuns {
+            _ = model.extractEntities(text: text, entityTypes: entityTypes, threshold: 0.3)
+        }
+
+        // Benchmark
+        var entityTimes: [Double] = []
+        var entityResult: [String: Any] = [:]
+        for _ in 0..<benchRuns {
+            let start = CFAbsoluteTimeGetCurrent()
+            entityResult = model.extractEntities(
+                text: text, entityTypes: entityTypes,
+                threshold: 0.3, includeConfidence: true, includeSpans: true
+            )
+            entityTimes.append(CFAbsoluteTimeGetCurrent() - start)
+        }
+
+        // --- Classification ---
+        let classLabels = ["positive", "negative", "neutral"]
+
+        // Warmup
+        for _ in 0..<warmupRuns {
+            _ = model.classifyText(text: text, task: "sentiment", labels: classLabels)
+        }
+
+        // Benchmark
+        var classifyTimes: [Double] = []
+        var classifyResult: [String: Any] = [:]
+        for _ in 0..<benchRuns {
+            let start = CFAbsoluteTimeGetCurrent()
+            classifyResult = model.classifyText(
+                text: text, task: "sentiment", labels: classLabels,
+                includeConfidence: true
+            )
+            classifyTimes.append(CFAbsoluteTimeGetCurrent() - start)
+        }
+
+        // --- Structured Extraction ---
+        let schema = model.createSchema()
+            .structure("deal")
+                .field("parties", dtype: "list")
+                .field("value", dtype: "str")
+                .field("location", dtype: "str")
+                .field("date", dtype: "str")
+            .done()
+
+        // Warmup
+        for _ in 0..<warmupRuns {
+            _ = model.extract(text: text, schema: schema, threshold: 0.3)
+        }
+
+        // Benchmark
+        var structTimes: [Double] = []
+        var structResult: [String: Any] = [:]
+        for _ in 0..<benchRuns {
+            let start = CFAbsoluteTimeGetCurrent()
+            structResult = model.extract(
+                text: text, schema: schema,
+                threshold: 0.3, includeConfidence: true, includeSpans: true
+            )
+            structTimes.append(CFAbsoluteTimeGetCurrent() - start)
+        }
+
+        // --- Combined Schema (all tasks together) ---
+        let combinedSchema = model.createSchema()
+            .entities(["person", "company", "location"])
+            .classification(task: "sentiment", labels: ["positive", "negative", "neutral"])
+            .structure("deal")
+                .field("parties", dtype: "list")
+                .field("value", dtype: "str")
+            .done()
+
+        // Warmup
+        for _ in 0..<warmupRuns {
+            _ = model.extract(text: text, schema: combinedSchema, threshold: 0.3)
+        }
+
+        // Benchmark
+        var combinedTimes: [Double] = []
+        var combinedResult: [String: Any] = [:]
+        for _ in 0..<benchRuns {
+            let start = CFAbsoluteTimeGetCurrent()
+            combinedResult = model.extract(
+                text: text, schema: combinedSchema,
+                threshold: 0.3, includeConfidence: true, includeSpans: true
+            )
+            combinedTimes.append(CFAbsoluteTimeGetCurrent() - start)
+        }
+
+        // --- Compute stats ---
+        func stats(_ times: [Double]) -> (mean: Double, min: Double, max: Double) {
+            let mean = times.reduce(0, +) / Double(times.count)
+            return (mean, times.min()!, times.max()!)
+        }
+
+        let entityStats = stats(entityTimes)
+        let classifyStats = stats(classifyTimes)
+        let structStats = stats(structTimes)
+        let combinedStats = stats(combinedTimes)
+
+        // --- Print Results ---
+        print("\n")
+        let sep = String(repeating: "=", count: 70)
+        let dash = String(repeating: "-", count: 70)
+
+        func pad(_ s: String, _ width: Int) -> String {
+            s.padding(toLength: width, withPad: " ", startingAt: 0)
+        }
+        func rpad(_ s: String, _ width: Int) -> String {
+            let padding = max(0, width - s.count)
+            return String(repeating: " ", count: padding) + s
+        }
+        func row(_ task: String, _ mean: Double, _ min: Double, _ max: Double) -> String {
+            let ms = { (v: Double) in String(format: "%.1fms", v * 1000) }
+            return "| \(pad(task, 25)) | \(rpad(ms(mean), 8)) | \(rpad(ms(min), 8)) | \(rpad(ms(max), 8)) |"
+        }
+
+        print(sep)
+        print("GLiNER2 Task Execution Benchmarks (with LoRA adapter)")
+        print(sep)
+        print("Text length: \(text.count) chars, ~\(text.split(separator: " ").count) words")
+        print("Runs: \(benchRuns) (after \(warmupRuns) warmup)")
+        print(dash)
+        print("| \(pad("Task", 25)) | \(rpad("Mean", 8)) | \(rpad("Min", 8)) | \(rpad("Max", 8)) |")
+        print(dash)
+        print(row("Entity Extraction", entityStats.mean, entityStats.min, entityStats.max))
+        print(row("Classification", classifyStats.mean, classifyStats.min, classifyStats.max))
+        print(row("Structured Extraction", structStats.mean, structStats.min, structStats.max))
+        print(row("Combined (all 3 tasks)", combinedStats.mean, combinedStats.min, combinedStats.max))
+        print(dash)
+        print("")
+
+        // Print extracted results for verification
+        print("--- Entity Results ---")
+        if let entities = entityResult["entities"] as? [String: Any] {
+            for (type, values) in entities {
+                if let list = values as? [[String: Any]] {
+                    let texts = list.compactMap { $0["text"] as? String }
+                    print("  \(type): \(texts)")
+                }
+            }
+        }
+
+        print("\n--- Classification Result ---")
+        print("  \(classifyResult)")
+
+        print("\n--- Structure Result ---")
+        print("  \(structResult)")
+
+        print("\n--- Combined Result ---")
+        print("  \(combinedResult)")
+
+        // Sanity checks
+        XCTAssertTrue(entityStats.mean < 10.0, "Entity extraction should complete in < 10s")
+        XCTAssertTrue(classifyStats.mean < 10.0, "Classification should complete in < 10s")
+        XCTAssertTrue(structStats.mean < 10.0, "Structure extraction should complete in < 10s")
     }
 }

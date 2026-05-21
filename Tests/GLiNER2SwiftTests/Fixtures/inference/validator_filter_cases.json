@@ -1,0 +1,413 @@
+{
+  "python_version": "3.12.7",
+  "re_flags_default": "re.IGNORECASE",
+  "cases": [
+    {
+      "name": "email_full_match",
+      "validators": [
+        {
+          "pattern": "^[\\w\\.-]+@[\\w\\.-]+\\.\\w+$",
+          "mode": "full",
+          "exclude": false
+        }
+      ],
+      "spans": [
+        {
+          "text": "alice@example.com",
+          "confidence": 0.95,
+          "charStart": 0,
+          "charEnd": 17
+        },
+        {
+          "text": "bob.dylan@music.io",
+          "confidence": 0.88,
+          "charStart": 20,
+          "charEnd": 38
+        },
+        {
+          "text": "not an email",
+          "confidence": 0.7,
+          "charStart": 40,
+          "charEnd": 52
+        },
+        {
+          "text": "also@invalid",
+          "confidence": 0.65,
+          "charStart": 55,
+          "charEnd": 67
+        },
+        {
+          "text": "x@y.z",
+          "confidence": 0.55,
+          "charStart": 70,
+          "charEnd": 75
+        }
+      ],
+      "filtered": [
+        {
+          "text": "alice@example.com",
+          "confidence": 0.95,
+          "charStart": 0,
+          "charEnd": 17
+        },
+        {
+          "text": "bob.dylan@music.io",
+          "confidence": 0.88,
+          "charStart": 20,
+          "charEnd": 38
+        },
+        {
+          "text": "x@y.z",
+          "confidence": 0.55,
+          "charStart": 70,
+          "charEnd": 75
+        }
+      ]
+    },
+    {
+      "name": "phone_partial_match",
+      "validators": [
+        {
+          "pattern": "\\(\\d{3}\\)\\s\\d{3}-\\d{4}",
+          "mode": "partial",
+          "exclude": false
+        }
+      ],
+      "spans": [
+        {
+          "text": "Call (555) 123-4567 today",
+          "confidence": 0.9,
+          "charStart": 0,
+          "charEnd": 25
+        },
+        {
+          "text": "phone 867-5309 here",
+          "confidence": 0.82,
+          "charStart": 30,
+          "charEnd": 49
+        },
+        {
+          "text": "(800) 555-1212",
+          "confidence": 0.75,
+          "charStart": 52,
+          "charEnd": 66
+        },
+        {
+          "text": "no number in sight",
+          "confidence": 0.6,
+          "charStart": 70,
+          "charEnd": 88
+        }
+      ],
+      "filtered": [
+        {
+          "text": "Call (555) 123-4567 today",
+          "confidence": 0.9,
+          "charStart": 0,
+          "charEnd": 25
+        },
+        {
+          "text": "(800) 555-1212",
+          "confidence": 0.75,
+          "charStart": 52,
+          "charEnd": 66
+        }
+      ]
+    },
+    {
+      "name": "exclude_test_demo_sample",
+      "validators": [
+        {
+          "pattern": "^(test|demo|sample)",
+          "mode": "partial",
+          "exclude": true
+        }
+      ],
+      "spans": [
+        {
+          "text": "user123",
+          "confidence": 0.9,
+          "charStart": 0,
+          "charEnd": 7
+        },
+        {
+          "text": "test_abc",
+          "confidence": 0.85,
+          "charStart": 10,
+          "charEnd": 18
+        },
+        {
+          "text": "demo",
+          "confidence": 0.8,
+          "charStart": 20,
+          "charEnd": 24
+        },
+        {
+          "text": "ab",
+          "confidence": 0.75,
+          "charStart": 26,
+          "charEnd": 28
+        },
+        {
+          "text": "sample42",
+          "confidence": 0.7,
+          "charStart": 30,
+          "charEnd": 38
+        },
+        {
+          "text": "ALICE",
+          "confidence": 0.65,
+          "charStart": 40,
+          "charEnd": 45
+        }
+      ],
+      "filtered": [
+        {
+          "text": "user123",
+          "confidence": 0.9,
+          "charStart": 0,
+          "charEnd": 7
+        },
+        {
+          "text": "ab",
+          "confidence": 0.75,
+          "charStart": 26,
+          "charEnd": 28
+        },
+        {
+          "text": "ALICE",
+          "confidence": 0.65,
+          "charStart": 40,
+          "charEnd": 45
+        }
+      ]
+    },
+    {
+      "name": "and_alphanumeric_and_length",
+      "validators": [
+        {
+          "pattern": "^[a-zA-Z0-9_]+$",
+          "mode": "full",
+          "exclude": false
+        },
+        {
+          "pattern": "^.{3,20}$",
+          "mode": "full",
+          "exclude": false
+        }
+      ],
+      "spans": [
+        {
+          "text": "user123",
+          "confidence": 0.9,
+          "charStart": 0,
+          "charEnd": 7
+        },
+        {
+          "text": "test_abc",
+          "confidence": 0.85,
+          "charStart": 10,
+          "charEnd": 18
+        },
+        {
+          "text": "demo",
+          "confidence": 0.8,
+          "charStart": 20,
+          "charEnd": 24
+        },
+        {
+          "text": "ab",
+          "confidence": 0.75,
+          "charStart": 26,
+          "charEnd": 28
+        },
+        {
+          "text": "sample42",
+          "confidence": 0.7,
+          "charStart": 30,
+          "charEnd": 38
+        },
+        {
+          "text": "ALICE",
+          "confidence": 0.65,
+          "charStart": 40,
+          "charEnd": 45
+        }
+      ],
+      "filtered": [
+        {
+          "text": "user123",
+          "confidence": 0.9,
+          "charStart": 0,
+          "charEnd": 7
+        },
+        {
+          "text": "test_abc",
+          "confidence": 0.85,
+          "charStart": 10,
+          "charEnd": 18
+        },
+        {
+          "text": "demo",
+          "confidence": 0.8,
+          "charStart": 20,
+          "charEnd": 24
+        },
+        {
+          "text": "sample42",
+          "confidence": 0.7,
+          "charStart": 30,
+          "charEnd": 38
+        },
+        {
+          "text": "ALICE",
+          "confidence": 0.65,
+          "charStart": 40,
+          "charEnd": 45
+        }
+      ]
+    },
+    {
+      "name": "rejects_all_list_dtype",
+      "validators": [
+        {
+          "pattern": "^\\d{20}$",
+          "mode": "full",
+          "exclude": false
+        }
+      ],
+      "spans": [
+        {
+          "text": "alice@example.com",
+          "confidence": 0.95,
+          "charStart": 0,
+          "charEnd": 17
+        },
+        {
+          "text": "bob.dylan@music.io",
+          "confidence": 0.88,
+          "charStart": 20,
+          "charEnd": 38
+        },
+        {
+          "text": "not an email",
+          "confidence": 0.7,
+          "charStart": 40,
+          "charEnd": 52
+        },
+        {
+          "text": "also@invalid",
+          "confidence": 0.65,
+          "charStart": 55,
+          "charEnd": 67
+        },
+        {
+          "text": "x@y.z",
+          "confidence": 0.55,
+          "charStart": 70,
+          "charEnd": 75
+        }
+      ],
+      "filtered": []
+    },
+    {
+      "name": "rejects_all_str_dtype",
+      "validators": [
+        {
+          "pattern": "^\\d{20}$",
+          "mode": "full",
+          "exclude": false
+        }
+      ],
+      "spans": [
+        {
+          "text": "alice@example.com",
+          "confidence": 0.95,
+          "charStart": 0,
+          "charEnd": 17
+        }
+      ],
+      "filtered": []
+    },
+    {
+      "name": "empty_validators_noop",
+      "validators": [],
+      "spans": [
+        {
+          "text": "user123",
+          "confidence": 0.9,
+          "charStart": 0,
+          "charEnd": 7
+        },
+        {
+          "text": "test_abc",
+          "confidence": 0.85,
+          "charStart": 10,
+          "charEnd": 18
+        },
+        {
+          "text": "demo",
+          "confidence": 0.8,
+          "charStart": 20,
+          "charEnd": 24
+        },
+        {
+          "text": "ab",
+          "confidence": 0.75,
+          "charStart": 26,
+          "charEnd": 28
+        },
+        {
+          "text": "sample42",
+          "confidence": 0.7,
+          "charStart": 30,
+          "charEnd": 38
+        },
+        {
+          "text": "ALICE",
+          "confidence": 0.65,
+          "charStart": 40,
+          "charEnd": 45
+        }
+      ],
+      "filtered": [
+        {
+          "text": "user123",
+          "confidence": 0.9,
+          "charStart": 0,
+          "charEnd": 7
+        },
+        {
+          "text": "test_abc",
+          "confidence": 0.85,
+          "charStart": 10,
+          "charEnd": 18
+        },
+        {
+          "text": "demo",
+          "confidence": 0.8,
+          "charStart": 20,
+          "charEnd": 24
+        },
+        {
+          "text": "ab",
+          "confidence": 0.75,
+          "charStart": 26,
+          "charEnd": 28
+        },
+        {
+          "text": "sample42",
+          "confidence": 0.7,
+          "charStart": 30,
+          "charEnd": 38
+        },
+        {
+          "text": "ALICE",
+          "confidence": 0.65,
+          "charStart": 40,
+          "charEnd": 45
+        }
+      ]
+    }
+  ]
+}

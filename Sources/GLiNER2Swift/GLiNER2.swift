@@ -134,6 +134,7 @@ public class GLiNER2 {
                 modelWeightsUrl: modelUrl,
                 encoderWeightsUrl: encoderUrl
             )
+            // For split weights, store the model weights URL (primary)
             gliner2.baseWeightsUrl = modelUrl
         } else {
             throw GLiNER2Error.fileNotFound("model weights")
@@ -141,6 +142,7 @@ public class GLiNER2 {
 
         // 5. Set to evaluation mode (disables dropout)
         gliner2.model.train(false)
+
         gliner2.model.freeze()
 
         return gliner2
@@ -192,7 +194,6 @@ public class GLiNER2 {
     /// Unload the current LoRA adapter, restoring original base weights.
     ///
     /// Re-loads the base weights without any LoRA deltas applied.
-    /// Matches Python's `model.unload_adapter()`.
     public func unloadAdapter() throws {
         guard let baseUrl = baseWeightsUrl else {
             throw GLiNER2Error.weightLoadingFailed("Base weights URL not available")
@@ -363,6 +364,146 @@ public class GLiNER2 {
             includeConfidence: includeConfidence,
             includeSpans: includeSpans
         )
+    }
+
+    // MARK: - JSON-style Shortcut API
+
+    /// Parsed components of a field-spec string.
+    public struct ParsedFieldSpec: Sendable, Equatable {
+        public let name: String
+        public let dtype: String
+        public let choices: [String]?
+        public let description: String?
+    }
+
+    /// Parse a field specification string.
+    ///
+    /// Format: `"name::dtype::choices::description"` where every part after
+    /// the name is optional. Mirrors Python `engine.py:_parse_field_spec`
+    /// semantics exactly.
+    ///
+    /// - `dtype`: `"str"` for a single value, `"list"` for multiple (default).
+    /// - `choices`: `"[a|b|c]"` declares enumerated options. When choices are
+    ///   present and dtype is not explicitly set, dtype defaults to `"str"`.
+    /// - `description`: any other part is treated as free-form description.
+    ///
+    /// Examples:
+    /// ```
+    /// "restaurant::str::Restaurant name"
+    /// "seating::[indoor|outdoor|bar]::Seating preference"
+    /// "dietary::[vegetarian|vegan]::list::Dietary restrictions"
+    /// "type::[equity|bond|option]::str::Financial instrument type"
+    /// ```
+    public static func parseFieldSpec(_ spec: String) -> ParsedFieldSpec {
+        let parts = spec.components(separatedBy: "::")
+        let name = parts.first ?? ""
+        var dtype = "list"
+        var choices: [String]? = nil
+        var description: String? = nil
+        var dtypeExplicitlySet = false
+
+        guard parts.count > 1 else {
+            return ParsedFieldSpec(name: name, dtype: dtype, choices: choices, description: description)
+        }
+
+        for part in parts.dropFirst() {
+            if part == "str" || part == "list" {
+                dtype = part
+                dtypeExplicitlySet = true
+            } else if part.hasPrefix("[") && part.hasSuffix("]") {
+                let inner = String(part.dropFirst().dropLast())
+                choices = inner.split(separator: "|").map {
+                    $0.trimmingCharacters(in: .whitespaces)
+                }
+                if !dtypeExplicitlySet {
+                    dtype = "str"
+                }
+            } else {
+                description = part
+            }
+        }
+
+        return ParsedFieldSpec(name: name, dtype: dtype, choices: choices, description: description)
+    }
+
+    /// Extract structured JSON data using a shortcut schema definition.
+    ///
+    /// Mirrors Python `GLiNER2.extract_json(text, structures)`. Each structure
+    /// is defined as `[structureName: [fieldSpec, ...]]` where every field spec
+    /// is a `"name::dtype::choices::description"` string (see `parseFieldSpec`).
+    ///
+    /// Example (financial transactions):
+    /// ```swift
+    /// let result = model.extractJson(
+    ///     text: financialText,
+    ///     structures: [
+    ///         "transaction": [
+    ///             "broker::str::Financial institution or brokerage firm",
+    ///             "amount::str::Transaction amount with currency",
+    ///             "type::[equity|bond|option|future|forex]::str::Type of instrument"
+    ///         ]
+    ///     ]
+    /// )
+    /// ```
+    ///
+    /// Note: Swift `Dictionary` iteration order is not guaranteed, so when
+    /// passing multiple structures the emission order of their schema tokens
+    /// may vary run-to-run. For deterministic ordering across many structures,
+    /// use the `createSchema().structure(...).field(...)` fluent builder
+    /// directly.
+    public func extractJson(
+        text: String,
+        structures: [String: [String]],
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false
+    ) -> [String: Any] {
+        let schema = buildSchemaFromStructures(structures)
+        return extract(
+            text: text,
+            schema: schema,
+            threshold: threshold,
+            includeConfidence: includeConfidence,
+            includeSpans: includeSpans
+        )
+    }
+
+    /// Batch variant of `extractJson`.
+    public func batchExtractJson(
+        texts: [String],
+        structures: [String: [String]],
+        batchSize: Int = 8,
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false
+    ) -> [[String: Any]] {
+        let schema = buildSchemaFromStructures(structures)
+        return batchExtract(
+            texts: texts,
+            schema: schema,
+            batchSize: batchSize,
+            threshold: threshold,
+            includeConfidence: includeConfidence,
+            includeSpans: includeSpans
+        )
+    }
+
+    private func buildSchemaFromStructures(_ structures: [String: [String]]) -> Schema {
+        let schema = createSchema()
+        for (parent, fields) in structures {
+            let builder = schema.structure(parent)
+            for spec in fields {
+                let parsed = Self.parseFieldSpec(spec)
+                _ = builder.field(
+                    parsed.name,
+                    dtype: parsed.dtype,
+                    choices: parsed.choices,
+                    description: parsed.description
+                )
+            }
+            _ = builder.done()
+        }
+        return schema
     }
 
     // MARK: - Private Helpers
@@ -1074,12 +1215,21 @@ public class GLiNER2 {
                         dtype: dtype
                     )
 
-                    instance[fieldName] = result
+                    // Match Python: dtype=list always stores (possibly empty) list,
+                    // dtype=str stores None when no match. Validators are
+                    // intentionally ignored on the choice path (engine.py:835-872).
+                    if let r = result {
+                        instance[fieldName] = r
+                    } else if dtype == "list" {
+                        instance[fieldName] = [Any]()
+                    } else {
+                        instance[fieldName] = NSNull()
+                    }
                 } else {
                     // Regular span field: use text scores
                     let fieldScores = instScores[fieldIdx, startIdx...]  // [textLen, maxWidth]
 
-                    let spans = decoder.findSpans(
+                    let rawSpans = decoder.findSpans(
                         scores: fieldScores,
                         threshold: fieldThreshold,
                         textLen: textLen,
@@ -1087,6 +1237,11 @@ public class GLiNER2 {
                         startMap: startMappings,
                         endMap: endMappings
                     )
+
+                    // Apply regex validators as post-threshold filter (engine.py:880-881).
+                    // AND-logic across validators; operates on pre-dedup typed spans
+                    // before overlap resolution in formatSpans.
+                    let spans = rawSpans.filtered(by: fieldMeta?.validators ?? [])
 
                     if dtype == "list" {
                         instance[fieldName] = decoder.formatSpans(
@@ -1116,14 +1271,17 @@ public class GLiNER2 {
                                 instance[fieldName] = first.text
                             }
                         } else {
-                            instance[fieldName] = nil
+                            // Match Python: empty str-dtype field is None, key preserved.
+                            instance[fieldName] = NSNull()
                         }
                     }
                 }
             }
 
-            // Only add if instance has any content
+            // Only add if instance has any content.
+            // Matches Python engine.py:910: any(v is not None and v != [] for v in ...)
             let hasContent = instance.values.contains { value in
+                if value is NSNull { return false }
                 if let arr = value as? [Any], arr.isEmpty { return false }
                 if let str = value as? String, str.isEmpty { return false }
                 return true
@@ -1261,13 +1419,17 @@ public class StructureBuilder {
     ///   - choices: Optional list of choices for classification fields
     ///   - description: Optional description for the field (used in schema tokens)
     ///   - threshold: Optional confidence threshold for this field
+    ///   - validators: Regex validators applied as post-threshold span filter.
+    ///     All must pass (AND-logic). Ignored when `choices` is non-nil, matching
+    ///     Python engine.py:835-872.
     @discardableResult
     public func field(
         _ fieldName: String,
         dtype: String = "list",
         choices: [String]? = nil,
         description: String? = nil,
-        threshold: Float? = nil
+        threshold: Float? = nil,
+        validators: [RegexValidator] = []
     ) -> StructureBuilder {
         if let choices = choices {
             fields[fieldName] = ["value": "", "choices": choices]
@@ -1284,6 +1446,15 @@ public class StructureBuilder {
         if let description = description {
             descriptions[fieldName] = description
         }
+
+        // Persist field metadata so dtype/threshold/choices/validators reach the
+        // extraction path. Matches Python _store_field_metadata (engine.py:154-160).
+        schema.metadata.fieldMetadata["\(name).\(fieldName)"] = FieldMetadata(
+            dtype: dtype,
+            threshold: threshold,
+            choices: choices,
+            validators: validators
+        )
 
         return self
     }
@@ -1339,6 +1510,7 @@ public struct FieldMetadata {
     var dtype: String = "list"
     var threshold: Float?
     var choices: [String]?
+    var validators: [RegexValidator] = []
 }
 
 public struct EntityMetadata {
