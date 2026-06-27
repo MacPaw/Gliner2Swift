@@ -62,7 +62,10 @@ public func downloadModelDirectory(
     let repo = Hub.Repo(id: repoId)
     let filePatterns = [
         "*.safetensors", "config.json",
-        "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json"
+        "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json",
+        // The encoder's true vocab_size lives here (top-level config omits it);
+        // needed to size the word-embedding for larger-vocab backbones (mdeberta).
+        "encoder_config/config.json"
     ]
 
     do {
