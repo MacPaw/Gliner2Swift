@@ -39,8 +39,11 @@ public struct ExtractorConfig: Codable, Sendable {
     /// Hidden size from encoder (default: 768 for DeBERTa-base)
     public let hiddenSize: Int
 
-    /// Vocabulary size including special tokens (default: 128011)
-    public let vocabSize: Int
+    /// Vocabulary size including special tokens (default: 128011). Lives in
+    /// `encoder_config/config.json`, not the top-level config — multilingual models
+    /// (mdeberta-v3-base) use 250112, so it must be read there or the word-embedding
+    /// is built at the wrong size and high token ids decode to garbage.
+    public var vocabSize: Int
 
     /// Maximum count value for CountLSTM (default: 20)
     public let maxCount: Int

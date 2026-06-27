@@ -105,8 +105,17 @@ public class GLiNER2 {
             }
         }
 
-        // 1. Load configuration
-        let config = try ExtractorConfig.load(from: configUrl)
+        // 1. Load configuration. The encoder's true vocab_size lives in
+        //    encoder_config/config.json (the top-level config omits it); without
+        //    this the word-embedding is built at the default 128011 and any model
+        //    with a larger vocab (mdeberta-v3-base = 250112) decodes to garbage.
+        var config = try ExtractorConfig.load(from: configUrl)
+        let encoderConfigUrl = baseUrl.appendingPathComponent("encoder_config/config.json")
+        if let encData = try? Data(contentsOf: encoderConfigUrl),
+           let enc = try? JSONSerialization.jsonObject(with: encData) as? [String: Any],
+           let vocab = enc["vocab_size"] as? Int, vocab > 0 {
+            config.vocabSize = vocab
+        }
 
         // 2. Initialize processor with tokenizer
         let poolingType: TokenPoolingType

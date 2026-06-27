@@ -20,6 +20,14 @@
 import MLX
 import MLXNN
 
+/// Count-aware label projection. Two backbone variants exist (`count_lstm`
+/// projector vs `count_lstm_v2` transformer) selected by the model config; both
+/// turn label embeddings into count-aware structure projections for span scoring.
+public protocol CountEmbedding: Module {
+    func callAsFunction(_ pcEmb: MLXArray, goldCountVal: Int) -> MLXArray
+    func loadWeights(_ weights: [String: MLXArray], prefix: String)
+}
+
 // MARK: - CountLSTM (Basic Version)
 
 /// Basic CountLSTM using GRU with MLP projector.
@@ -30,7 +38,7 @@ import MLXNN
 ///   h0 = pc_emb.unsqueeze(0)  # (1, M, D)
 ///   output, _ = gru(pos_seq, h0)  # (L, M, D)
 ///   return projector(cat([output, pc_emb.expand], dim=-1))  # (L, M, D)
-public class CountLSTM: Module {
+public class CountLSTM: Module, CountEmbedding {
     public let hiddenSize: Int
     public let maxCount: Int
 
@@ -113,7 +121,7 @@ public class CountLSTM: Module {
 ///   output, _ = gru(pos_seq, h0)           # (L, M, D)
 ///   pc_broadcast = pc_emb.unsqueeze(0).expand_as(output)
 ///   return transformer(output + pc_broadcast)  # ← ADDITION here!
-public class CountLSTMv2: Module {
+public class CountLSTMv2: Module, CountEmbedding {
     public let hiddenSize: Int
     public let maxCount: Int
 

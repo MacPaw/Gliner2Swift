@@ -52,8 +52,9 @@ public class Extractor: Module {
     /// Count prediction layer: hidden → 2*hidden → 20
     public let countPred: Sequential
 
-    /// Count embedding module (CountLSTMv2 for gliner2-base-v1)
-    public let countEmbed: CountLSTMv2
+    /// Count embedding module — variant chosen by config.countingLayer
+    /// (count_lstm = CountLSTM projector; count_lstm_v2 = CountLSTMv2 transformer).
+    public let countEmbed: CountEmbedding
 
     /// Initialize Extractor from configuration
     ///
@@ -107,11 +108,16 @@ public class Extractor: Module {
             addLayerNorm: false
         )
 
-        // Initialize count embedding
-        self.countEmbed = CountLSTMv2(
-            hiddenSize: hiddenSize,
-            maxCount: config.maxCount
-        )
+        // Initialize count embedding — the backbone variant the checkpoint uses.
+        // Multilingual gliner2-multi-v1 uses count_lstm (projector); the English
+        // base uses count_lstm_v2 (transformer). Building the wrong one leaves its
+        // weights unloaded (random) and silently garbles span scoring.
+        switch config.countingLayer {
+        case .countLSTM:
+            self.countEmbed = CountLSTM(hiddenSize: hiddenSize, maxCount: config.maxCount)
+        case .countLSTMv2, .countLSTMMoE:
+            self.countEmbed = CountLSTMv2(hiddenSize: hiddenSize, maxCount: config.maxCount)
+        }
     }
 
     // MARK: - Encoder Forward
@@ -162,10 +168,12 @@ public class Extractor: Module {
         let endInvalid = MLX.equal(spanIdxArray[0..., 0..., 1], MLXArray(Int32(-1)))
         let spanMask = MLX.logicalOr(startInvalid, endInvalid)
 
-        // Replace invalid indices with (0, 0) for safe indexing
+        // Replace invalid indices with (0, 0) for safe indexing. The zeros MUST be
+        // Int32 to match spanIdxArray — otherwise `where` promotes safeSpans to
+        // Float and the downstream gather fails ("cannot gather with indices type").
         let safeSpans = MLX.where(
             spanMask.expandedDimensions(axis: -1),
-            MLXArray.zeros([1, spansIdx.count, 2]),
+            MLXArray.zeros([1, spansIdx.count, 2], type: Int32.self),
             spanIdxArray
         )
 
@@ -261,6 +269,9 @@ extension Extractor {
         ("count_embed.transformer.transformer.layers", "countEmbed.transformer.transformerLayers"),
         ("count_embed.transformer.in_projector", "countEmbed.transformer.inProjector"),
         ("count_embed.transformer.out_projector", "countEmbed.transformer.outProjector"),
+        // count_lstm (v1) projector MLP — prefix only; CountLSTM.loadWeights maps
+        // the .0/.2 PyTorch indices onto its Sequential itself.
+        ("count_embed.projector", "countEmbed.projector"),
         // GRU keys (full terminal keys, no suffix)
         ("count_embed.gru.weight_ih_l0", "countEmbed.gru.weightIH"),
         ("count_embed.gru.weight_hh_l0", "countEmbed.gru.weightHH"),
