@@ -1,0 +1,222 @@
+{
+  "test_cases": [
+    {
+      "text": "Hello, world!",
+      "token_ids": [
+        5365,
+        261,
+        447,
+        300
+      ],
+      "tokens": [
+        "\u2581Hello",
+        ",",
+        "\u2581world",
+        "!"
+      ]
+    },
+    {
+      "text": "Tim Cook is CEO of Apple.",
+      "token_ids": [
+        4185,
+        5851,
+        269,
+        3033,
+        265,
+        2013,
+        260
+      ],
+      "tokens": [
+        "\u2581Tim",
+        "\u2581Cook",
+        "\u2581is",
+        "\u2581CEO",
+        "\u2581of",
+        "\u2581Apple",
+        "."
+      ]
+    },
+    {
+      "text": "The quick brown fox.",
+      "token_ids": [
+        279,
+        1538,
+        3258,
+        16123,
+        260
+      ],
+      "tokens": [
+        "\u2581The",
+        "\u2581quick",
+        "\u2581brown",
+        "\u2581fox",
+        "."
+      ]
+    },
+    {
+      "text": "John and Jane work at Google in Mountain View.",
+      "token_ids": [
+        918,
+        263,
+        5807,
+        374,
+        288,
+        1354,
+        267,
+        4255,
+        3388,
+        260
+      ],
+      "tokens": [
+        "\u2581John",
+        "\u2581and",
+        "\u2581Jane",
+        "\u2581work",
+        "\u2581at",
+        "\u2581Google",
+        "\u2581in",
+        "\u2581Mountain",
+        "\u2581View",
+        "."
+      ]
+    },
+    {
+      "text": "Great product! I love it.",
+      "token_ids": [
+        1447,
+        714,
+        300,
+        273,
+        472,
+        278,
+        260
+      ],
+      "tokens": [
+        "\u2581Great",
+        "\u2581product",
+        "!",
+        "\u2581I",
+        "\u2581love",
+        "\u2581it",
+        "."
+      ]
+    },
+    {
+      "text": "iPhone 15 Pro costs $999 and is made by Apple.",
+      "token_ids": [
+        3026,
+        706,
+        2191,
+        1294,
+        419,
+        17413,
+        263,
+        269,
+        412,
+        293,
+        2013,
+        260
+      ],
+      "tokens": [
+        "\u2581iPhone",
+        "\u258115",
+        "\u2581Pro",
+        "\u2581costs",
+        "\u2581$",
+        "999",
+        "\u2581and",
+        "\u2581is",
+        "\u2581made",
+        "\u2581by",
+        "\u2581Apple",
+        "."
+      ]
+    },
+    {
+      "text": "John Smith is 35 years old.",
+      "token_ids": [
+        918,
+        2430,
+        269,
+        2453,
+        388,
+        597,
+        260
+      ],
+      "tokens": [
+        "\u2581John",
+        "\u2581Smith",
+        "\u2581is",
+        "\u258135",
+        "\u2581years",
+        "\u2581old",
+        "."
+      ]
+    },
+    {
+      "text": "This is a test with punctuation: commas, periods. And questions?",
+      "token_ids": [
+        329,
+        269,
+        266,
+        1010,
+        275,
+        28559,
+        294,
+        54569,
+        261,
+        4909,
+        260,
+        414,
+        841,
+        302
+      ],
+      "tokens": [
+        "\u2581This",
+        "\u2581is",
+        "\u2581a",
+        "\u2581test",
+        "\u2581with",
+        "\u2581punctuation",
+        ":",
+        "\u2581commas",
+        ",",
+        "\u2581periods",
+        ".",
+        "\u2581And",
+        "\u2581questions",
+        "?"
+      ]
+    },
+    {
+      "text": "[P] person [E] name",
+      "token_ids": [
+        128003,
+        604,
+        128005,
+        601
+      ],
+      "tokens": [
+        "[P]",
+        "\u2581person",
+        "[E]",
+        "\u2581name"
+      ]
+    },
+    {
+      "text": "  leading and trailing spaces  ",
+      "token_ids": [
+        1249,
+        263,
+        18347,
+        3654
+      ],
+      "tokens": [
+        "\u2581leading",
+        "\u2581and",
+        "\u2581trailing",
+        "\u2581spaces"
+      ]
+    }
+  ]
+}

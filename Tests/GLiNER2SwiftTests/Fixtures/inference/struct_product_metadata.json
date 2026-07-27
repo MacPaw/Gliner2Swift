@@ -1,0 +1,26 @@
+{
+  "text": "iPhone 15 Pro costs $999 and is made by Apple.",
+  "text_normalized": "iPhone 15 Pro costs $999 and is made by Apple.",
+  "structure_name": "product",
+  "fields": [
+    "name",
+    "price",
+    "manufacturer"
+  ],
+  "schema": {
+    "json_structures": [
+      {
+        "product": {
+          "name": "",
+          "price": "",
+          "manufacturer": ""
+        }
+      }
+    ],
+    "classifications": [],
+    "entities": {},
+    "relations": [],
+    "json_descriptions": {},
+    "entity_descriptions": {}
+  }
+}

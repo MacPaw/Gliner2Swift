@@ -44,6 +44,11 @@ public final class UnigramTokenizer: @unchecked Sendable {
     /// Special token to ID mapping (for tokens from added_tokens)
     private let specialTokenToId: [String: Int]
 
+    /// Collapses whitespace runs and tabs/newlines, matching the leading `Replace` stage
+    /// of the normalizer Python actually runs (see `normalize` below).
+    private static let whitespaceRunPattern = try? NSRegularExpression(
+        pattern: "\\s{2,}|[\\n\\r\\t]", options: [])
+
     /// Special token IDs
     public let padTokenId: Int
     public let clsTokenId: Int
@@ -163,6 +168,35 @@ public final class UnigramTokenizer: @unchecked Sendable {
         self.descriptionTokenId = tokenToId["[DESCRIPTION]"] ?? vocab["[DESCRIPTION]"]?.id ?? 128010
     }
 
+    /// Apply the normalizer chain that Python's tokenizer actually runs.
+    ///
+    /// The parity target is `AutoTokenizer.from_pretrained(<repo>)`, which builds a fast
+    /// `DebertaV2Tokenizer` whose normalizer is:
+    ///
+    ///     Sequence[ Replace(Regex("\s{2,}|[\n\r\t]"), " "), NFC(), Strip(right) ]
+    ///
+    /// Note this is NOT the chain declared in the model directory's tokenizer.json
+    /// (`Strip -> Precompiled(charsmap) -> Replace`). That file is an artifact of weight
+    /// conversion; transformers derives the tokenizer from `spm.model` instead and never
+    /// applies the SentencePiece charsmap. The difference is observable: the charsmap maps
+    /// fullwidth `Ａ` to `A` and composes decomposed accents, whereas Python's
+    /// `normalizer.normalize_str("Ａ")` returns `"Ａ"` unchanged. Implementing the charsmap
+    /// therefore moves Swift AWAY from Python parity — NFC is what matches.
+    private func normalize(_ text: String) -> String {
+        var result = text
+        if let pattern = Self.whitespaceRunPattern {
+            result = pattern.stringByReplacingMatches(
+                in: result, options: [],
+                range: NSRange(result.startIndex..., in: result),
+                withTemplate: " ")
+        }
+        // NFC: canonical composition, e.g. "e" + U+0301 -> "é".
+        result = result.precomposedStringWithCanonicalMapping
+        // Strip(strip_left: false, strip_right: true)
+        while let last = result.last, last.isWhitespace { result.removeLast() }
+        return result
+    }
+
     // MARK: - Tokenization
 
     /// Tokenize text into tokens
@@ -172,8 +206,10 @@ public final class UnigramTokenizer: @unchecked Sendable {
     public func tokenize(_ text: String) -> [String] {
         guard !text.isEmpty else { return [] }
 
-        // Apply normalizer: strip leading/trailing whitespace (matches Python's Strip normalizer)
-        let normalized = text.trimmingCharacters(in: .whitespaces)
+        // Apply the normalizer chain (whitespace collapse, NFC, right-strip). The leading
+        // whitespace trim is retained from the previous behaviour: preTokenize splits on
+        // whitespace and drops empties, so it cannot change the token stream.
+        let normalized = normalize(text.trimmingCharacters(in: .whitespaces))
         guard !normalized.isEmpty else { return [] }
 
         // Pre-tokenize: split into words (whitespace only, matches Python Metaspace)

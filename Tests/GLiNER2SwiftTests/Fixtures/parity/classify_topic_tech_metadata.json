@@ -1,0 +1,11 @@
+{
+  "text": "New AI model breaks records!",
+  "task": "topic",
+  "labels": [
+    "sports",
+    "technology",
+    "politics"
+  ],
+  "purpose": "Technology topic",
+  "threshold": 0.5
+}

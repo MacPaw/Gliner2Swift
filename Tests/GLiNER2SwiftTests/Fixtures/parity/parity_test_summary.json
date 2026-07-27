@@ -1,0 +1,25 @@
+{
+  "description": "GLiNER2 Python parity test results",
+  "model": "fastino/gliner2-base-v1",
+  "threshold": 0.5,
+  "test_categories": {
+    "entity_extraction": [
+      "entity_multiple_people",
+      "entity_multi_type",
+      "entity_no_match",
+      "entity_tech_companies",
+      "entity_with_titles"
+    ],
+    "classification": [
+      "classify_sentiment_negative",
+      "classify_topic_sports",
+      "classify_sentiment_neutral",
+      "classify_topic_tech"
+    ],
+    "structure_extraction": [
+      "struct_product",
+      "struct_event",
+      "struct_contact"
+    ]
+  }
+}

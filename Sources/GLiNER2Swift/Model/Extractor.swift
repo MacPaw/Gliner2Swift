@@ -244,7 +244,7 @@ extension Extractor {
 
     /// Detect whether weights are in raw PyTorch format (snake_case keys)
     /// vs pre-converted format (camelCase keys from convert_weights.py).
-    private static func isRawPyTorchFormat(_ weights: [String: MLXArray]) -> Bool {
+    static func isRawPyTorchFormat(_ weights: [String: MLXArray]) -> Bool {
         weights.keys.contains(where: { $0.hasPrefix("span_rep.") })
     }
 
@@ -287,22 +287,23 @@ extension Extractor {
 
         var result: [String: MLXArray] = [:]
         for (key, value) in weights {
-            if key.hasPrefix("encoder.") {
-                // Encoder weights pass through unchanged
-                result[key] = value
-            } else {
-                // Apply first matching prefix replacement
-                var newKey = key
-                for (prefix, replacement) in keyMappings {
-                    if key.hasPrefix(prefix) {
-                        newKey = replacement + key.dropFirst(prefix.count)
-                        break
-                    }
-                }
-                result[newKey] = value
-            }
+            result[mapRawKey(key)] = value
         }
         return result
+    }
+
+    /// Map a single raw PyTorch key into the converted key space.
+    ///
+    /// Encoder keys are identical in both spaces and pass through unchanged. Works for any
+    /// suffix, so it also maps LoRA keys (`.lora_A` / `.lora_B`), not just `.weight`/`.bias`.
+    static func mapRawKey(_ key: String) -> String {
+        // Encoder weights pass through unchanged
+        if key.hasPrefix("encoder.") { return key }
+        // Apply first matching prefix replacement
+        for (prefix, replacement) in keyMappings where key.hasPrefix(prefix) {
+            return replacement + key.dropFirst(prefix.count)
+        }
+        return key
     }
 
     // MARK: - Weight Loading
@@ -385,7 +386,8 @@ extension Extractor {
         let adapterUrl = adapterPath.appendingPathComponent("adapter_weights.safetensors")
         let adapterWeights = try loadArrays(url: adapterUrl)
 
-        // 3. Merge LoRA deltas into base weights (in Python key space)
+        // 3. Merge LoRA deltas into base weights. `mergeLoRAWeights` accepts either key
+        //    space for the base checkpoint (raw snake_case or converted camelCase).
         mergeLoRAWeights(into: &rawWeights, adapterWeights: adapterWeights, config: config)
 
         // 4. Sanitize and load (reuses existing code path)

@@ -1,0 +1,11 @@
+{
+  "text": "The conference is March 15 in San Francisco.",
+  "structure_name": "event",
+  "fields": [
+    "name",
+    "date",
+    "location"
+  ],
+  "purpose": "Event extraction",
+  "threshold": 0.5
+}

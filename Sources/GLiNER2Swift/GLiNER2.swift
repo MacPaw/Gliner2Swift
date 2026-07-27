@@ -419,7 +419,20 @@ public class GLiNER2 {
                 mappedIndices: Array(mappedIndices[textStartIdx...]),
                 poolingType: processor.tokenPooling
             )
-            let textLen = pooledEmbeddings.dim(0)  // Number of whitespace words
+            // Pooled positions cover the classification prefix AND the real text words:
+            // buildClassificationPrefix prepends its tokens to the text segment. Python
+            // separates the two — `text_len = len(start_mapping)` counts only real words,
+            // and the prefix occupies `scores[..., :-text_len]` — so the span decode path
+            // must use the real text length, not the pooled length. They are equal (and
+            // the prefix empty) for every schema without choice fields, which is why this
+            // only matters once choices are in play.
+            let pooledLen = pooledEmbeddings.dim(0)
+            let textLen = min(batch.startMappings[sampleIdx].count, pooledLen)
+            let prefixLen = pooledLen - textLen
+            let allTextTokens = batch.textTokens[sampleIdx]
+            let prefixTokens = prefixLen > 0
+                ? Array(allTextTokens.prefix(prefixLen))
+                : []
 
             // Extract schema embeddings per-schema (grouped by schema_idx in mapping)
             // Only special tokens ([P], [C], [E], [R], [L]) contribute embeddings
@@ -501,6 +514,7 @@ public class GLiNER2 {
                         threshold: threshold,
                         metadata: metadata,
                         clsFields: clsFields,
+                        prefixTokens: prefixTokens,
                         decoder: decoder,
                         includeConfidence: includeConfidence,
                         includeSpans: includeSpans
@@ -592,10 +606,9 @@ public class GLiNER2 {
 
     /// Get argmax of a 1D array
     private func argmax(_ arr: MLXArray) -> Int {
-        MLX.eval(arr)
-        let maxIdx = MLX.argMax(arr)
-        MLX.eval(maxIdx)
-        return Int(maxIdx.item(Int32.self))
+        // `.item()` already forces a single eval barrier; the extra explicit
+        // eval() calls were redundant GPU->CPU flushes.
+        Int(MLX.argMax(arr).item(Int32.self))
     }
 
     /// Pool subword embeddings to word-level embeddings.
@@ -715,17 +728,27 @@ public class GLiNER2 {
             probs = isMultiLabel ? MLX.sigmoid(logits) : MLX.softmax(logits, axis: -1)
         }
 
-        MLX.eval(probs)
+        // Single bulk copy to the CPU, then read every label in pure Swift
+        // (replaces per-label `.item()` syncs and the redundant argmax evals).
+        let probsArr = probs.asArray(Float32.self)
 
         // Extract results
         let numLabels = labels.count
-        guard probs.dim(0) >= numLabels else { return }
+        guard probsArr.count >= numLabels else { return }
+
+        // argmax over the full vector, first-max on ties (matches MLX.argMax)
+        func argmaxFull() -> Int {
+            var bi = 0
+            var bv = probsArr[0]
+            for j in 1..<probsArr.count where probsArr[j] > bv { bv = probsArr[j]; bi = j }
+            return bi
+        }
 
         if isMultiLabel {
             // Multi-label: return all labels above threshold
             var chosen: [(String, Float)] = []
             for j in 0..<numLabels {
-                let prob = Float(probs[j].item(Float32.self))
+                let prob = probsArr[j]
                 if prob >= classThreshold {
                     chosen.append((labels[j], prob))
                 }
@@ -733,9 +756,9 @@ public class GLiNER2 {
 
             // If none above threshold, return the best one
             if chosen.isEmpty {
-                let bestIdx = argmax(probs)
+                let bestIdx = argmaxFull()
                 if bestIdx < numLabels {
-                    let bestProb = Float(probs[bestIdx].item(Float32.self))
+                    let bestProb = probsArr[bestIdx]
                     chosen = [(labels[bestIdx], bestProb)]
                 }
             }
@@ -747,9 +770,9 @@ public class GLiNER2 {
             }
         } else {
             // Single-label: return the best label
-            let bestIdx = argmax(probs)
+            let bestIdx = argmaxFull()
             guard bestIdx < numLabels else { return }
-            let bestProb = Float(probs[bestIdx].item(Float32.self))
+            let bestProb = probsArr[bestIdx]
 
             if includeConfidence {
                 results[schemaName] = ["label": labels[bestIdx], "confidence": bestProb]
@@ -778,6 +801,7 @@ public class GLiNER2 {
         threshold: Float,
         metadata: SchemaMetadata,
         clsFields: [String: [String]],
+        prefixTokens: [String],
         decoder: SpanDecoder,
         includeConfidence: Bool,
         includeSpans: Bool
@@ -809,9 +833,14 @@ public class GLiNER2 {
             if taskType == "entities" {
                 results[schemaName] = [:] as [String: Any]
             } else if taskType == "relations" {
-                results[schemaName] = [] as [(String, String)]
+                // Still register the relation under `relation_extraction` with an empty
+                // list: Python lists every requested relation even when nothing matched.
+                var grouped = results["relation_extraction"] as? [String: Any] ?? [:]
+                grouped[schemaName] = [] as [Any]
+                results["relation_extraction"] = grouped
             } else {
-                results[schemaName] = [] as [[String: Any]]
+                // An empty structure formats to `{}` in Python, not `[]`.
+                results[schemaName] = [String: Any]()
             }
             return
         }
@@ -880,6 +909,7 @@ public class GLiNER2 {
                 threshold: threshold,
                 metadata: metadata,
                 clsFields: clsFields,
+                prefixTokens: prefixTokens,
                 decoder: decoder,
                 includeConfidence: includeConfidence,
                 includeSpans: includeSpans
@@ -934,10 +964,45 @@ public class GLiNER2 {
                 includeSpans: includeSpans
             )
 
-            entityResults[entityName] = formatted
+            // Python's formatting pass keeps only the first span per distinct lowercased
+            // surface text, even when spans are included (engine.py:_format_entity_dict).
+            // A document repeating "Apple" ten times yields one entry, not ten.
+            entityResults[entityName] = Self.dedupeByLowercasedText(formatted)
         }
 
         results[schemaName] = entityResults
+    }
+
+    /// Drop later values whose `text` (lowercased) was already seen, preserving order.
+    ///
+    /// Mirrors Python's `_format_entity_dict` / `_format_struct` de-duplication, which
+    /// applies to both plain-string and span-dictionary output shapes.
+    static func dedupeByLowercasedText(_ values: [Any]) -> [Any] {
+        var unique: [Any] = []
+        var seen: Set<String> = []
+        unique.reserveCapacity(values.count)
+
+        for value in values {
+            let text: String?
+            if let string = value as? String {
+                text = string
+            } else if let dict = value as? [String: Any] {
+                text = dict["text"] as? String
+            } else {
+                text = nil
+            }
+
+            guard let key = text else {
+                unique.append(value)   // shape we do not de-duplicate on
+                continue
+            }
+            guard !key.isEmpty else { continue }   // Python drops falsy text
+            let lowered = key.lowercased()
+            if seen.insert(lowered).inserted {
+                unique.append(value)
+            }
+        }
+        return unique
     }
 
     // MARK: - Relation Extraction
@@ -1021,7 +1086,11 @@ public class GLiNER2 {
             }
         }
 
-        results[schemaName] = instances
+        // Python groups every relation under a top-level `relation_extraction` key, and
+        // lists each requested relation even when it matched nothing (engine.py:1066-1075).
+        var grouped = results["relation_extraction"] as? [String: Any] ?? [:]
+        grouped[schemaName] = instances
+        results["relation_extraction"] = grouped
     }
 
     // MARK: - Structure Extraction
@@ -1039,6 +1108,7 @@ public class GLiNER2 {
         threshold: Float,
         metadata: SchemaMetadata,
         clsFields: [String: [String]],
+        prefixTokens: [String],
         decoder: SpanDecoder,
         includeConfidence: Bool,
         includeSpans: Bool
@@ -1063,23 +1133,34 @@ public class GLiNER2 {
 
                 // Check if this is a choice field
                 if let choices = clsFields[fieldKey] {
-                    // Choice field: use prefix scores
-                    let prefixScores = instScores[fieldIdx, 0..<startIdx]  // [prefixLen, maxWidth]
+                    // Choice fields are scored against the classification-prefix region,
+                    // which occupies the positions before the real text words. Matches
+                    // Python: prefix_scores = span_scores[inst, fidx, :-text_len] and
+                    // _find_choice_idx(choice, text_tokens[:-text_len]).
+                    let result: Any?
+                    if startIdx > 0 {
+                        let prefixScores = instScores[fieldIdx, 0..<startIdx]  // [prefixLen, maxWidth]
+                        result = decoder.decodeChoiceField(
+                            prefixScores: prefixScores,
+                            choices: choices,
+                            textTokens: prefixTokens,
+                            threshold: fieldThreshold,
+                            dtype: dtype,
+                            includeConfidence: includeConfidence
+                        )
+                    } else {
+                        result = nil
+                    }
 
-                    let result = decoder.decodeChoiceField(
-                        prefixScores: prefixScores,
-                        choices: choices,
-                        textTokens: [],  // Not used with this implementation
-                        threshold: fieldThreshold,
-                        dtype: dtype
-                    )
-
-                    instance[fieldName] = result
+                    // Python keeps the key with a null/empty value rather than dropping
+                    // it (engine.py:660); the instance-level content gate below decides
+                    // whether the whole instance survives.
+                    instance[fieldName] = result ?? NSNull()
                 } else {
                     // Regular span field: use text scores
                     let fieldScores = instScores[fieldIdx, startIdx...]  // [textLen, maxWidth]
 
-                    let spans = decoder.findSpans(
+                    var spans = decoder.findSpans(
                         scores: fieldScores,
                         threshold: fieldThreshold,
                         textLen: textLen,
@@ -1087,6 +1168,14 @@ public class GLiNER2 {
                         startMap: startMappings,
                         endMap: endMappings
                     )
+
+                    // Drop spans failing any validator before formatting, as Python does
+                    // (engine.py:668).
+                    if let validators = fieldMeta?.validators, !validators.isEmpty {
+                        spans = spans.filter { span in
+                            validators.allSatisfy { $0.validate(span.text) }
+                        }
+                    }
 
                     if dtype == "list" {
                         instance[fieldName] = decoder.formatSpans(
@@ -1122,19 +1211,31 @@ public class GLiNER2 {
                 }
             }
 
-            // Only add if instance has any content
+            // Only add if instance has any content. Matches Python's
+            // `any(v is not None and v != [])` (engine.py:697) — a null choice value and
+            // an empty span list both count as "no content".
             let hasContent = instance.values.contains { value in
+                if value is NSNull { return false }
                 if let arr = value as? [Any], arr.isEmpty { return false }
                 if let str = value as? String, str.isEmpty { return false }
                 return true
             }
 
             if hasContent {
+                // De-duplicate repeated surface text within each list-valued field, as
+                // Python's _format_struct does.
+                for (fieldName, value) in instance {
+                    if let list = value as? [Any] {
+                        instance[fieldName] = Self.dedupeByLowercasedText(list)
+                    }
+                }
                 instances.append(instance)
             }
         }
 
-        results[schemaName] = instances
+        // With no surviving instance Python leaves an empty struct dict, which formats to
+        // `{}` — not the empty list Swift would otherwise emit.
+        results[schemaName] = instances.isEmpty ? [String: Any]() : instances
     }
 }
 
@@ -1159,14 +1260,20 @@ public class Schema {
 
     /// Add entity extraction task
     @discardableResult
-    public func entities(_ entityTypes: [String]) -> Schema {
+    public func entities(
+        _ entityTypes: [String],
+        dtype: String = "list",
+        threshold: Float? = nil
+    ) -> Schema {
         var entitiesDict = internalSchemaDict["entities"] as? [String: Any] ?? [:]
         for entityType in entityTypes {
             entitiesDict[entityType] = ""
+            metadata.entityMetadata[entityType] = EntityMetadata(dtype: dtype, threshold: threshold)
         }
         internalSchemaDict["entities"] = entitiesDict
         // Store entity order for parity with Python
         internalSchemaDict["_entity_order"] = entityTypes
+        metadata.entityOrder = entityTypes
         return self
     }
 
@@ -1219,12 +1326,14 @@ public class Schema {
 
     /// Add relation extraction task
     @discardableResult
-    public func relations(_ relationTypes: [String]) -> Schema {
+    public func relations(_ relationTypes: [String], threshold: Float? = nil) -> Schema {
         var relations = internalSchemaDict["relations"] as? [[String: [String: Any]]] ?? []
         for relationType in relationTypes {
             relations.append([relationType: ["head": "", "tail": ""]])
+            metadata.relationMetadata[relationType] = RelationMetadata(threshold: threshold)
         }
         internalSchemaDict["relations"] = relations
+        metadata.relationOrder.append(contentsOf: relationTypes)
         return self
     }
 
@@ -1261,19 +1370,31 @@ public class StructureBuilder {
     ///   - choices: Optional list of choices for classification fields
     ///   - description: Optional description for the field (used in schema tokens)
     ///   - threshold: Optional confidence threshold for this field
+    ///   - validators: Optional regex validators; spans failing any of them are dropped
     @discardableResult
     public func field(
         _ fieldName: String,
         dtype: String = "list",
         choices: [String]? = nil,
         description: String? = nil,
-        threshold: Float? = nil
+        threshold: Float? = nil,
+        validators: [RegexValidator]? = nil
     ) -> StructureBuilder {
         if let choices = choices {
             fields[fieldName] = ["value": "", "choices": choices]
         } else {
             fields[fieldName] = ""
         }
+
+        // Record the per-field configuration so decoding can honour it. Matches Python's
+        // Schema._store_field_metadata; without this the decoder falls back to
+        // dtype "list" and the call-level threshold for every field.
+        schema.metadata.fieldMetadata["\(name).\(fieldName)"] = FieldMetadata(
+            dtype: dtype,
+            threshold: threshold,
+            choices: choices,
+            validators: validators
+        )
 
         // Track insertion order (only add if new)
         if !fieldOrder.contains(fieldName) {
@@ -1339,6 +1460,7 @@ public struct FieldMetadata {
     var dtype: String = "list"
     var threshold: Float?
     var choices: [String]?
+    var validators: [RegexValidator]?
 }
 
 public struct EntityMetadata {

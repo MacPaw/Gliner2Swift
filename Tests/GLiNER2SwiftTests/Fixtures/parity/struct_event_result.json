@@ -1,0 +1,30 @@
+{
+  "event": [
+    {
+      "name": [
+        {
+          "text": "conference",
+          "confidence": 0.9998310804367065,
+          "start": 4,
+          "end": 14
+        }
+      ],
+      "date": [
+        {
+          "text": "March 15",
+          "confidence": 1.0,
+          "start": 18,
+          "end": 26
+        }
+      ],
+      "location": [
+        {
+          "text": "San Francisco",
+          "confidence": 0.9999974966049194,
+          "start": 30,
+          "end": 43
+        }
+      ]
+    }
+  ]
+}

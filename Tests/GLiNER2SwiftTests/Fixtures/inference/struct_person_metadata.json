@@ -1,0 +1,26 @@
+{
+  "text": "John Smith is 35 years old and lives in New York.",
+  "text_normalized": "John Smith is 35 years old and lives in New York.",
+  "structure_name": "person_info",
+  "fields": [
+    "name",
+    "age",
+    "location"
+  ],
+  "schema": {
+    "json_structures": [
+      {
+        "person_info": {
+          "name": "",
+          "age": "",
+          "location": ""
+        }
+      }
+    ],
+    "classifications": [],
+    "entities": {},
+    "relations": [],
+    "json_descriptions": {},
+    "entity_descriptions": {}
+  }
+}

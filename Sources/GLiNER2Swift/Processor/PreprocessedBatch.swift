@@ -146,15 +146,9 @@ public struct PreprocessedBatch {
         guard sampleIndex < originalLengths.count else { return [] }
         let seqLen = originalLengths[sampleIndex]
 
-        // Extract row from MLXArray and convert to [Int]
+        // Single bulk eval + memcpy instead of O(seqLen) per-token GPU->CPU syncs.
         let row = inputIds[sampleIndex, 0..<seqLen]
-        MLX.eval(row)
-
-        var ids: [Int] = []
-        for i in 0..<seqLen {
-            ids.append(Int(row[i].item(Int32.self)))
-        }
-        return ids
+        return row.asArray(Int32.self).map { Int($0) }
     }
 
     /// Move tensors to specific device/stream

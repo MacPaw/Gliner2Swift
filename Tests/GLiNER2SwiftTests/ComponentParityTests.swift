@@ -33,19 +33,37 @@ final class ComponentParityTests: XCTestCase {
 
     // MARK: - Configuration
 
-    static let weightsPath: String = {
-        if let envPath = ProcessInfo.processInfo.environment["GLINER2_WEIGHTS_PATH"] {
-            return envPath
-        }
-        return URL(fileURLWithPath: #file)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("weights").path
-    }()
+    static let weightsPath: String = TestModel.fp32WeightsPath
+
     static let fixturesPath = URL(fileURLWithPath: #file)
         .deletingLastPathComponent()
         .appendingPathComponent("Fixtures")
+
+    /// Loads the model, skipping the test when the converted weights are absent.
+    ///
+    /// Do not call `fromPretrained(Self.weightsPath)` directly: a nonexistent path is
+    /// treated as a HuggingFace repo id, producing a confusing network error instead of
+    /// a skip.
+    private func loadModel() async throws -> GLiNER2 {
+        try await GLiNER2.fromPretrained(try TestModel.requireFP32Weights())
+    }
+
+    /// Reads a tensor from a fixture, skipping the test when the key is absent.
+    ///
+    /// Force-unwrapping here crashes the whole xctest process (taking unrelated suites
+    /// with it) whenever a fixture is regenerated with different key names.
+    private func requireKey(
+        _ fixture: [String: MLXArray], _ key: String,
+        file: StaticString = #filePath, line: UInt = #line
+    ) throws -> MLXArray {
+        guard let value = fixture[key] else {
+            throw XCTSkip("""
+                Fixture key '\(key)' missing (available: \(fixture.keys.sorted().joined(separator: ", "))). \
+                Regenerate with: python scripts/generate_component_fixtures.py
+                """)
+        }
+        return value
+    }
 
     /// Tolerance for numerical comparison
     let tolerance: Float = 1e-4
@@ -69,10 +87,10 @@ final class ComponentParityTests: XCTestCase {
             throw XCTSkip("Embedding fixtures not found. Run: python scripts/generate_component_fixtures.py")
         }
 
-        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let model = try await loadModel()
 
         // Get input IDs from fixture
-        let inputIds = fixture["input_ids"]!
+        let inputIds = try requireKey(fixture, "input_ids")
         print("Input IDs: \(inputIds)")
 
         // Get embeddings from Swift model
@@ -80,7 +98,7 @@ final class ComponentParityTests: XCTestCase {
         MLX.eval(swiftEmbeddings)
 
         // Compare with Python
-        let pythonWordEmb = fixture["word_embeddings"]!
+        let pythonWordEmb = try requireKey(fixture, "word_embeddings")
         let swiftL1 = Float(MLX.sum(MLX.abs(swiftEmbeddings)).item(Float32.self))
         let pythonL1 = Float(MLX.sum(MLX.abs(pythonWordEmb)).item(Float32.self))
 
@@ -100,11 +118,11 @@ final class ComponentParityTests: XCTestCase {
             throw XCTSkip("Embedding fixtures not found")
         }
 
-        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let model = try await loadModel()
 
-        let inputIds = fixture["input_ids"]!
-        let pythonAfterLN = fixture["after_layernorm"]!
-        let pythonFullEmb = fixture["full_embeddings"]!
+        let inputIds = try requireKey(fixture, "input_ids")
+        _ = try requireKey(fixture, "after_layernorm")  // presence check only
+        let pythonFullEmb = try requireKey(fixture, "full_embeddings")
 
         // Run full embeddings forward pass (includes LayerNorm)
         let swiftFullEmb = model.model.encoder.embeddings(inputIds)
@@ -129,7 +147,7 @@ final class ComponentParityTests: XCTestCase {
             throw XCTSkip("Position bucket fixtures not found")
         }
 
-        let pythonBuckets = fixture["position_matrix"]!
+        let pythonBuckets = try requireKey(fixture, "position_matrix")
         let swiftBuckets = makeLogBucketPosition(seqLen: 5, positionBuckets: 256, maxPosition: 512)
         MLX.eval(swiftBuckets)
 
@@ -151,7 +169,7 @@ final class ComponentParityTests: XCTestCase {
             throw XCTSkip("Position bucket fixtures not found")
         }
 
-        let pythonBuckets = fixture["position_matrix"]!
+        let pythonBuckets = try requireKey(fixture, "position_matrix")
         let swiftBuckets = makeLogBucketPosition(seqLen: 18, positionBuckets: 256, maxPosition: 512)
         MLX.eval(swiftBuckets)
 
@@ -175,11 +193,11 @@ final class ComponentParityTests: XCTestCase {
             throw XCTSkip("Attention fixtures not found")
         }
 
-        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let model = try await loadModel()
         let layer0 = model.model.encoder.layers[0]
 
         // Get input hidden states
-        let inputHidden = fixture["input_hidden"]!
+        let inputHidden = try requireKey(fixture, "embeddings")
 
         // Compute Q, K, V with Swift
         let swiftQuery = layer0.attention.queryProj(inputHidden)
@@ -188,9 +206,9 @@ final class ComponentParityTests: XCTestCase {
         MLX.eval(swiftQuery, swiftKey, swiftValue)
 
         // Compare with Python
-        let pythonQuery = fixture["query"]!
-        let pythonKey = fixture["key"]!
-        let pythonValue = fixture["value"]!
+        let pythonQuery = try requireKey(fixture, "query")
+        let pythonKey = try requireKey(fixture, "key")
+        let pythonValue = try requireKey(fixture, "value")
 
         let querySwiftL1 = Float(MLX.sum(MLX.abs(swiftQuery)).item(Float32.self))
         let queryPythonL1 = Float(MLX.sum(MLX.abs(pythonQuery)).item(Float32.self))
@@ -218,12 +236,12 @@ final class ComponentParityTests: XCTestCase {
             throw XCTSkip("Attention fixtures not found")
         }
 
-        let pythonC2C = fixture["c2c_scores"]!
+        let pythonC2C = try requireKey(fixture, "c2c")
         let pythonC2CL1 = Float(MLX.sum(MLX.abs(pythonC2C)).item(Float32.self))
 
         // Compute c2c from query_heads and key_heads
-        let queryHeads = fixture["query_heads"]!
-        let keyHeads = fixture["key_heads"]!
+        let queryHeads = try requireKey(fixture, "q_heads")
+        let keyHeads = try requireKey(fixture, "k_heads")
 
         let swiftC2C = MLX.matmul(queryHeads, keyHeads.transposed(0, 1, 3, 2))
         MLX.eval(swiftC2C)
@@ -247,12 +265,12 @@ final class ComponentParityTests: XCTestCase {
             throw XCTSkip("Encoder layer fixtures not found")
         }
 
-        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let model = try await loadModel()
 
         // Get embeddings input
-        let embeddings = fixture["embeddings"]!
-        let relEmb = fixture["rel_embeddings"]!
-        let pythonLayer0Output = fixture["layer0_output"]!
+        let embeddings = try requireKey(fixture, "embeddings")
+        let relEmb = try requireKey(fixture, "rel_embeddings")
+        let pythonLayer0Output = try requireKey(fixture, "layer0_output")
 
         // Run layer 0
         let layer0 = model.model.encoder.layers[0]
@@ -288,11 +306,11 @@ final class ComponentParityTests: XCTestCase {
             throw XCTSkip("Full encoder fixtures not found")
         }
 
-        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let model = try await loadModel()
 
         // Get input IDs
-        let inputIds = fixture["input_ids"]!
-        let pythonHidden = fixture["hidden_states"]!
+        let inputIds = try requireKey(fixture, "input_ids")
+        let pythonHidden = try requireKey(fixture, "hidden_states")
 
         // Run full encoder
         let attentionMask = MLXArray.ones([1, inputIds.dim(1)], dtype: .int32)
@@ -348,7 +366,7 @@ final class ComponentParityTests: XCTestCase {
             throw XCTSkip("Weight reference not found. Run: python scripts/verify_all_weights.py")
         }
 
-        let model = try await GLiNER2.fromPretrained(Self.weightsPath)
+        let model = try await loadModel()
 
         // Critical weights to verify
         let criticalWeights: [(String, () -> MLXArray)] = [

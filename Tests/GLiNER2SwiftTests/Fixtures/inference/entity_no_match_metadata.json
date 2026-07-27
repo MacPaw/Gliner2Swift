@@ -1,0 +1,19 @@
+{
+  "text": "The weather is nice today.",
+  "text_normalized": "The weather is nice today.",
+  "entity_types": [
+    "person",
+    "company"
+  ],
+  "schema": {
+    "json_structures": [],
+    "classifications": [],
+    "entities": {
+      "person": "",
+      "company": ""
+    },
+    "relations": [],
+    "json_descriptions": {},
+    "entity_descriptions": {}
+  }
+}

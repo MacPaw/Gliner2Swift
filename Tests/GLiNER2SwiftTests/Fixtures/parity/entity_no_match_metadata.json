@@ -1,0 +1,8 @@
+{
+  "text": "The weather is nice today.",
+  "entity_types": [
+    "person"
+  ],
+  "purpose": "No matches case",
+  "threshold": 0.5
+}

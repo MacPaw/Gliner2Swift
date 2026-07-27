@@ -87,14 +87,21 @@ public struct SpanDecoder {
         let seqLen = scores.dim(0)
         let widthDim = scores.dim(1)
 
-        // MLX doesn't have argWhere, so we iterate manually
-        // First, evaluate the scores to Swift-accessible values
-        MLX.eval(scores)
+        // Bulk-copy the whole [seqLen, widthDim] score tile to the CPU in a single
+        // eval + contiguous memcpy, then index it in pure Swift. This replaces
+        // O(seqLen * widthDim) per-element `.item()` calls, each of which forces a
+        // blocking GPU->CPU command-buffer flush (the dominant cost of this loop).
+        let flatScores = scores.asArray(Float32.self)
+
+        // Hoisted out of the candidate loop: `text.count` and index walks are O(n) each,
+        // and findSpans runs once per field per count-instance over the same text.
+        let scalars = text.unicodeScalars
+        let scalarCount = scalars.count
 
         // Iterate over all positions
         for start in 0..<seqLen {
             for width in 0..<widthDim {
-                let score = Float(scores[start, width].item(Float32.self))
+                let score = flatScores[start * widthDim + width]
 
                 guard score >= threshold else { continue }
 
@@ -108,11 +115,15 @@ public struct SpanDecoder {
                 let charStart = startMap[start]
                 let charEnd = endMap[end - 1]
 
-                // Extract text span
-                guard charStart < text.count && charEnd <= text.count else { continue }
-                let startIdx = text.index(text.startIndex, offsetBy: charStart)
-                let endIdx = text.index(text.startIndex, offsetBy: charEnd)
-                let spanText = String(text[startIdx..<endIdx]).trimmingCharacters(in: .whitespaces)
+                // Slice in UNICODE SCALARS, matching the offsets the splitter produced and
+                // Python's codepoint-based character offsets. Indexing by Character would
+                // land in the wrong place whenever the text contains multi-scalar grapheme
+                // clusters (decomposed accents, emoji sequences).
+                guard charStart < scalarCount && charEnd <= scalarCount else { continue }
+                let startIdx = scalars.index(scalars.startIndex, offsetBy: charStart)
+                let endIdx = scalars.index(scalars.startIndex, offsetBy: charEnd)
+                let spanText = String(String.UnicodeScalarView(scalars[startIdx..<endIdx]))
+                    .trimmingCharacters(in: .whitespaces)
 
                 guard !spanText.isEmpty else { continue }
 
@@ -242,10 +253,26 @@ extension SpanDecoder {
         choices: [String],
         textTokens: [String],
         threshold: Float,
-        dtype: String
+        dtype: String,
+        includeConfidence: Bool = false
     ) -> Any? {
+        guard prefixScores.dim(0) > 0 else { return nil }
+
+        // Read the width-0 column once. Reading `prefixScores[idx, 0].item()` per choice
+        // forces one blocking GPU->CPU flush per choice; a single bulk copy of the
+        // [prefixLen, maxWidth] tile is one flush total.
+        let flatScores = prefixScores.asArray(Float32.self)
+        let widthDim = prefixScores.dim(1)
+        func score(at index: Int) -> Float { flatScores[index * widthDim] }
+
+        // Choice values carry no character span, so `includeSpans` adds nothing here —
+        // Python emits {"text", "confidence"} for them, never start/end.
+        func format(_ choice: String, _ confidence: Float) -> Any {
+            includeConfidence ? ["text": choice, "confidence": confidence] : choice
+        }
+
         if dtype == "list" {
-            var selected: [(String, Float)] = []
+            var selected: [Any] = []
             var seen: Set<String> = []
 
             for choice in choices {
@@ -254,15 +281,16 @@ extension SpanDecoder {
                 if let idx = findChoiceIndex(choice, in: textTokens) {
                     guard idx < prefixScores.dim(0) else { continue }
 
-                    let score = Float(prefixScores[idx, 0].item(Float32.self))
-                    if score >= threshold {
-                        selected.append((choice, score))
+                    let value = score(at: idx)
+                    if value >= threshold {
+                        selected.append(format(choice, value))
                         seen.insert(choice)
                     }
                 }
             }
 
-            return selected.isEmpty ? nil : selected.map { $0.0 }
+            // Python returns the (possibly empty) list rather than dropping the key.
+            return selected
         } else {
             // dtype == "str": return best match
             var best: String? = nil
@@ -272,16 +300,16 @@ extension SpanDecoder {
                 if let idx = findChoiceIndex(choice, in: textTokens) {
                     guard idx < prefixScores.dim(0) else { continue }
 
-                    let score = Float(prefixScores[idx, 0].item(Float32.self))
-                    if score > bestScore {
-                        bestScore = score
+                    let value = score(at: idx)
+                    if value > bestScore {
+                        bestScore = value
                         best = choice
                     }
                 }
             }
 
             if let best = best, bestScore >= threshold {
-                return best
+                return format(best, bestScore)
             }
             return nil
         }

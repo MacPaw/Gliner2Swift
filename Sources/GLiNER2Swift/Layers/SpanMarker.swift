@@ -267,17 +267,10 @@ extension SpanMarkerV0 {
         // Projection structure: Linear → ReLU → Dropout → Linear
         // Indices: 0=Linear, 1=ReLU, 2=Dropout, 3=Linear
 
-        // Debug: Print key availability
         let w0Key = "\(prefix).0.weight"
         let b0Key = "\(prefix).0.bias"
         let w3Key = "\(prefix).3.weight"
         let b3Key = "\(prefix).3.bias"
-
-        print("SpanMarker loading from prefix: \(prefix)")
-        print("  \(w0Key): \(weights[w0Key] != nil ? "FOUND \(weights[w0Key]!.shape)" : "⚠️ MISSING")")
-        print("  \(b0Key): \(weights[b0Key] != nil ? "FOUND \(weights[b0Key]!.shape)" : "⚠️ MISSING")")
-        print("  \(w3Key): \(weights[w3Key] != nil ? "FOUND \(weights[w3Key]!.shape)" : "⚠️ MISSING")")
-        print("  \(b3Key): \(weights[b3Key] != nil ? "FOUND \(weights[b3Key]!.shape)" : "⚠️ MISSING")")
 
         if let linear0 = projection.layers[0] as? Linear {
             updateLinearWeights(

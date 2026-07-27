@@ -1,0 +1,8 @@
+{
+  "text": "Apple and Google announced a partnership.",
+  "entity_types": [
+    "organization"
+  ],
+  "purpose": "Tech companies",
+  "threshold": 0.5
+}

@@ -1,0 +1,8 @@
+{
+  "text": "John, Mary, and Bob went to the store.",
+  "entity_types": [
+    "person"
+  ],
+  "purpose": "Multiple same-type entities",
+  "threshold": 0.5
+}

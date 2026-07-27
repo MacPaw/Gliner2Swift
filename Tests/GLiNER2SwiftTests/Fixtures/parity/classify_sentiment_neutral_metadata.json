@@ -1,0 +1,11 @@
+{
+  "text": "Just got my package delivered.",
+  "task": "sentiment",
+  "labels": [
+    "positive",
+    "negative",
+    "neutral"
+  ],
+  "purpose": "Neutral sentiment",
+  "threshold": 0.5
+}

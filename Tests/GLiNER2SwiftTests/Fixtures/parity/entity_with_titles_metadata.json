@@ -1,0 +1,9 @@
+{
+  "text": "Dr. Smith works at General Hospital.",
+  "entity_types": [
+    "person",
+    "organization"
+  ],
+  "purpose": "Entities with titles",
+  "threshold": 0.5
+}

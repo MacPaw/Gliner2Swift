@@ -1,0 +1,21 @@
+{
+  "text": "John and Jane work at Google in Mountain View.",
+  "text_normalized": "John and Jane work at Google in Mountain View.",
+  "entity_types": [
+    "person",
+    "organization",
+    "location"
+  ],
+  "schema": {
+    "json_structures": [],
+    "classifications": [],
+    "entities": {
+      "person": "",
+      "organization": "",
+      "location": ""
+    },
+    "relations": [],
+    "json_descriptions": {},
+    "entity_descriptions": {}
+  }
+}

@@ -29,18 +29,8 @@ final class TokenizerParityTests: XCTestCase {
 
     // MARK: - Properties
 
-    /// Path to weights directory (set via environment or hardcoded for local testing)
-    static let weightsPath: String = {
-        if let envPath = ProcessInfo.processInfo.environment["GLINER2_WEIGHTS_PATH"] {
-            return envPath
-        }
-        // Default: weights directory at project root
-        return URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("weights").path
-    }()
+    /// Path to weights directory (set via `GLINER2_WEIGHTS_PATH`, else `<repo>/weights`)
+    static let weightsPath: String = TestModel.fp32WeightsPath
 
     /// Path to fixtures directory
     static let fixturesPath = URL(fileURLWithPath: #file)
@@ -55,9 +45,15 @@ final class TokenizerParityTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
 
+        // Skip (never fail) when the model is not available on this machine.
+        let weightsDir = try TestModel.requireFP32Weights()
+
         // Load tokenizer
-        let tokenizerUrl = URL(fileURLWithPath: Self.weightsPath)
+        let tokenizerUrl = URL(fileURLWithPath: weightsDir)
             .appendingPathComponent("tokenizer.json")
+        guard FileManager.default.fileExists(atPath: tokenizerUrl.path) else {
+            throw XCTSkip("tokenizer.json not found at \(tokenizerUrl.path)")
+        }
         tokenizer = try UnigramTokenizer(tokenizerJsonUrl: tokenizerUrl)
 
         // Load fixtures

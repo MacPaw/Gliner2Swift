@@ -41,13 +41,21 @@ public func mergeLoRAWeights(
     var merged = 0
     for (path, pair) in pairs {
         guard let loraA = pair.a, let loraB = pair.b else { continue }
-        let weightKey = path + ".weight"
-        if let baseWeight = baseWeights[weightKey] {
-            // W_merged = W_base + (B @ A) * scaling
-            let delta = matmul(loraB, loraA) * MLXArray(scaling)
-            baseWeights[weightKey] = baseWeight + delta
-            merged += 1
-        }
+
+        // Adapter keys are always emitted in Python (snake_case) space, but the base
+        // checkpoint may already be converted to camelCase (anything produced by
+        // convert_weights.py, including the shipped fp16 model). Try the raw key first,
+        // then the converted one. Without this fallback only `encoder.*` pairs match —
+        // those keys are identical in both spaces — and every span_rep / count_embed /
+        // count_pred / classifier delta is silently dropped, partially applying the adapter.
+        let candidates = [path + ".weight", Extractor.mapRawKey(path) + ".weight"]
+        guard let weightKey = candidates.first(where: { baseWeights[$0] != nil }),
+              let baseWeight = baseWeights[weightKey] else { continue }
+
+        // W_merged = W_base + (B @ A) * scaling
+        let delta = matmul(loraB, loraA) * MLXArray(scaling)
+        baseWeights[weightKey] = baseWeight + delta
+        merged += 1
     }
     return merged
 }
