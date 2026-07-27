@@ -14,445 +14,354 @@
 #    limitations under the License.
 #
 """
-Convert GLiNER2 PyTorch SafeTensors weights to MLX-compatible format.
+Convert a GLiNER2 PyTorch checkpoint to the MLX model directory the Swift
+package loads, at a chosen precision, and optionally push it to the Hub.
 
-This script converts weights from the PyTorch model to a format that can be
-loaded by the Swift/MLX implementation. It handles:
-- DeBERTa encoder weights (with disentangled attention - NO separate pos_key/query_proj)
-- SpanMarkerV0 span representation weights
-- CountLSTMv2 weights (GRU + DownscaledTransformer)
-- Classifier and count prediction MLPs
+The output directory is self-contained and loads directly through
+`GLiNER2.fromPretrained(<dir>)`:
 
-CRITICAL DeBERTa Notes:
-- share_att_key=true: query_proj and key_proj are used for BOTH content and position
-- NO pos_key_proj or pos_query_proj weights exist in the model
-- rel_embeddings are shared across all encoder layers
+    model.safetensors   converted weights (fp16/fp32/bf16, or int8-quantized)
+    config.json         extractor config (+ a `quantization` block when quantized)
+    tokenizer.json      copied from the source (the only tokenizer file Swift reads)
+    tokenizer_config.json, spm.model, ...   copied through for completeness
+
+What it does to the weights:
+  - DeBERTa encoder (disentangled attention, share_att_key=true — NO pos_key/query_proj)
+  - SpanMarkerV0 span representation, CountLSTMv2 (GRU + DownscaledTransformer),
+    classifier / count-prediction MLPs
+  - PyTorch snake_case -> Swift camelCase key remapping
+  - DownscaledTransformer combined in_proj -> split q/k/v
+
+Quantization (`--quantize int8`):
+  Reproduces exactly what `Extractor.quantize(.int8)` does at load time in Swift:
+  affine group quantization of the ENCODER's Linear weights (and, by default, the
+  word-embedding table), group size 64, leaving everything else at fp16. The packed
+  layout (`.weight` uint32 + `.scales` + `.biases`) and the `quantization` config block
+  are MLX's standard `QuantizedLinear`/`QuantizedEmbedding` format.
 
 Usage:
-    # Default: single combined file (recommended)
-    python convert_weights.py --model fastino/gliner2-base-v1 --output ../weights
+    # fp16 directory (what the shipped model uses)
+    python convert_weights.py --model fastino/gliner2-base-v1 \
+        --output ../out/gliner2_mlx_fp16 --dtype fp16
 
-    # Legacy: split files (for backwards compatibility)
-    python convert_weights.py --model fastino/gliner2-base-v1 --output ../weights --split-files
+    # int8-quantized directory
+    python convert_weights.py --model fastino/gliner2-base-v1 \
+        --output ../out/gliner2_mlx_int8 --quantize int8
 
-Output (default - single file):
-    - model.safetensors: All weights (encoder + GLiNER2 model) with Swift-compatible names
-    - weight_mapping.json: Mapping from PyTorch names to Swift names
-
-Output (--split-files):
-    - gliner2_weights.safetensors: GLiNER2-specific weights (span_rep, classifier, etc.)
-    - encoder_weights.safetensors: DeBERTa encoder weights (~400MB)
-    - weight_mapping.json: Mapping from PyTorch names to Swift names
+    # convert and push
+    python convert_weights.py --model fastino/gliner2-base-v1 \
+        --output ../out/gliner2_mlx_int8 --quantize int8 \
+        --push-to-hub your-org/gliner2_mlx_int8 --private
 """
 
 import argparse
 import json
 import os
+import shutil
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Optional
 
-import numpy as np
+import mlx.core as mx
 import torch
 from safetensors import safe_open
-from safetensors.torch import save_file
+
+# ---------------------------------------------------------------------------
+# Weight loading + PyTorch -> Swift name mapping (proven mapping, unchanged)
+# ---------------------------------------------------------------------------
+
+# Tokenizer / config files copied verbatim into the output directory so the
+# result loads without touching the source. `tokenizer.json` is the only one the
+# Swift tokenizer actually reads; the rest are carried for completeness / Python use.
+SIDE_CAR_FILES = [
+    "config.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "spm.model",
+    "special_tokens_map.json",
+    "added_tokens.json",
+]
+
+
+def resolve_source_file(model: str, filename: str) -> Optional[str]:
+    """Return a local path to `filename` for a local dir or Hub id, or None."""
+    if os.path.isdir(model):
+        path = os.path.join(model, filename)
+        return path if os.path.exists(path) else None
+    try:
+        from huggingface_hub import hf_hub_download
+
+        return hf_hub_download(model, filename)
+    except Exception:
+        return None
 
 
 def get_pytorch_weights(model_path: str) -> Dict[str, torch.Tensor]:
-    """Load weights from HuggingFace model."""
-    from huggingface_hub import hf_hub_download
-
-    if os.path.isdir(model_path):
-        weights_path = os.path.join(model_path, "model.safetensors")
-    else:
-        weights_path = hf_hub_download(model_path, "model.safetensors")
+    """Load PyTorch weights from a local dir or a Hub id."""
+    weights_path = resolve_source_file(model_path, "model.safetensors")
+    if weights_path is None:
+        raise FileNotFoundError(f"model.safetensors not found for '{model_path}'")
 
     weights = {}
     with safe_open(weights_path, framework="pt", device="cpu") as f:
         for key in f.keys():
             weights[key] = f.get_tensor(key)
-
     return weights
 
 
 def map_weight_name(pytorch_name: str) -> str:
-    """
-    Map PyTorch weight name to Swift/MLX naming convention.
-
-    PyTorch uses snake_case, Swift uses camelCase.
-    Also handles structural differences in module naming.
-    """
-    # Weight name mappings: PyTorch -> Swift
+    """Map a PyTorch snake_case key to the Swift camelCase key."""
     mappings = {
-        # Span representation
         "span_rep.span_rep_layer.project_start": "spanRep.spanRepLayer.projectStart",
         "span_rep.span_rep_layer.project_end": "spanRep.spanRepLayer.projectEnd",
         "span_rep.span_rep_layer.out_project": "spanRep.spanRepLayer.outProject",
-
-        # Classifier MLP
         "classifier.0": "classifier.layers.0",
-        "classifier.2": "classifier.layers.1",  # After ReLU
-
-        # Count prediction MLP
+        "classifier.2": "classifier.layers.1",
         "count_pred.0": "countPred.layers.0",
         "count_pred.2": "countPred.layers.1",
-
-        # CountLSTMv2 components
         "count_embed.pos_embedding": "countEmbed.posEmbedding",
         "count_embed.gru.weight_ih_l0": "countEmbed.gru.weightIH",
         "count_embed.gru.weight_hh_l0": "countEmbed.gru.weightHH",
         "count_embed.gru.bias_ih_l0": "countEmbed.gru.biasIH",
         "count_embed.gru.bias_hh_l0": "countEmbed.gru.biasHH",
-
-        # DownscaledTransformer
         "count_embed.transformer.in_projector": "countEmbed.transformer.inProjector",
         "count_embed.transformer.out_projector": "countEmbed.transformer.outProjector",
         "count_embed.transformer.transformer.layers": "countEmbed.transformer.transformerLayers",
     }
-
-    swift_name = pytorch_name
-
-    # Apply mappings
     for pt_prefix, swift_prefix in mappings.items():
         if pytorch_name.startswith(pt_prefix):
-            swift_name = pytorch_name.replace(pt_prefix, swift_prefix, 1)
-            break
-
-    return swift_name
-
-
-def split_encoder_weights(
-    weights: Dict[str, torch.Tensor]
-) -> tuple[Dict[str, torch.Tensor], Dict[str, torch.Tensor]]:
-    """
-    Split weights into encoder and non-encoder components.
-
-    Returns:
-        (encoder_weights, model_weights)
-    """
-    encoder_weights = {}
-    model_weights = {}
-
-    for name, tensor in weights.items():
-        if name.startswith("encoder."):
-            # Keep 'encoder.' prefix for consistent loading in Swift
-            # Our Swift loader expects: encoder.embeddings.*, encoder.encoder.layer.*, etc.
-            encoder_weights[name] = tensor
-        else:
-            model_weights[name] = tensor
-
-    return encoder_weights, model_weights
-
-
-def process_deberta_encoder_weights(
-    encoder_weights: Dict[str, torch.Tensor]
-) -> Dict[str, torch.Tensor]:
-    """
-    Process DeBERTa encoder weights for Swift/MLX compatibility.
-
-    DeBERTa v2/v3 weight structure:
-    - encoder.embeddings.word_embeddings.weight: [vocab_size, hidden_size]
-    - encoder.embeddings.LayerNorm.weight/bias: [hidden_size]
-    - encoder.encoder.layer.{i}.attention.self.query_proj.weight/bias: [hidden, hidden]
-    - encoder.encoder.layer.{i}.attention.self.key_proj.weight/bias: [hidden, hidden]
-    - encoder.encoder.layer.{i}.attention.self.value_proj.weight/bias: [hidden, hidden]
-    - encoder.encoder.layer.{i}.attention.output.dense.weight/bias: [hidden, hidden]
-    - encoder.encoder.layer.{i}.attention.output.LayerNorm.weight/bias: [hidden]
-    - encoder.encoder.layer.{i}.intermediate.dense.weight/bias: [intermediate, hidden]
-    - encoder.encoder.layer.{i}.output.dense.weight/bias: [hidden, intermediate]
-    - encoder.encoder.layer.{i}.output.LayerNorm.weight/bias: [hidden]
-    - encoder.encoder.rel_embeddings.weight: [max_position, hidden_size]
-    - encoder.encoder.LayerNorm.weight/bias: [hidden_size]
-
-    CRITICAL: share_att_key=true means NO pos_key_proj or pos_query_proj exist.
-    The query_proj and key_proj are reused for both content and position attention.
-    """
-    processed = {}
-
-    for name, tensor in encoder_weights.items():
-        # Weights are already in correct format for DeBERTa
-        # Just pass through with validation
-        processed[name] = tensor
-
-    # Validate expected structure
-    expected_prefixes = [
-        "encoder.embeddings.word_embeddings",
-        "encoder.embeddings.LayerNorm",
-        "encoder.encoder.layer",
-        "encoder.encoder.rel_embeddings",
-        "encoder.encoder.LayerNorm",
-    ]
-
-    found_prefixes = set()
-    for name in processed.keys():
-        for prefix in expected_prefixes:
-            if name.startswith(prefix):
-                found_prefixes.add(prefix)
-                break
-
-    missing = set(expected_prefixes) - found_prefixes
-    if missing:
-        print(f"WARNING: Missing expected encoder weight prefixes: {missing}")
-
-    # Verify NO pos_key_proj or pos_query_proj (would indicate wrong model config)
-    for name in processed.keys():
-        if "pos_key_proj" in name or "pos_query_proj" in name:
-            print(f"WARNING: Found unexpected position projection weight: {name}")
-            print("         This suggests share_att_key=false, which is not expected for gliner2-base-v1")
-
-    return processed
+            return pytorch_name.replace(pt_prefix, swift_prefix, 1)
+    return pytorch_name
 
 
 def convert_transformer_layer_weights(
-    weights: Dict[str, torch.Tensor],
-    layer_prefix: str
+    weights: Dict[str, torch.Tensor], layer_prefix: str
 ) -> Dict[str, torch.Tensor]:
-    """
-    Convert PyTorch TransformerEncoderLayer weights to MLX format.
-
-    PyTorch stores Q, K, V in a combined in_proj_weight tensor.
-    We need to split them for MLX MultiHeadAttention.
-    """
+    """Split the DownscaledTransformer's combined in_proj into q/k/v; pass FFN through."""
     converted = {}
-
-    # Self-attention in_proj (combined Q, K, V)
     in_proj_key = f"{layer_prefix}.self_attn.in_proj_weight"
     if in_proj_key in weights:
         in_proj = weights[in_proj_key]
-        hidden_size = in_proj.shape[0] // 3
-
-        # Split into Q, K, V
-        converted[f"{layer_prefix}.self_attn.q_proj.weight"] = in_proj[:hidden_size]
-        converted[f"{layer_prefix}.self_attn.k_proj.weight"] = in_proj[hidden_size:2*hidden_size]
-        converted[f"{layer_prefix}.self_attn.v_proj.weight"] = in_proj[2*hidden_size:]
-
+        h = in_proj.shape[0] // 3
+        converted[f"{layer_prefix}.self_attn.q_proj.weight"] = in_proj[:h]
+        converted[f"{layer_prefix}.self_attn.k_proj.weight"] = in_proj[h : 2 * h]
+        converted[f"{layer_prefix}.self_attn.v_proj.weight"] = in_proj[2 * h :]
     in_proj_bias_key = f"{layer_prefix}.self_attn.in_proj_bias"
     if in_proj_bias_key in weights:
-        in_proj_bias = weights[in_proj_bias_key]
-        hidden_size = in_proj_bias.shape[0] // 3
-
-        converted[f"{layer_prefix}.self_attn.q_proj.bias"] = in_proj_bias[:hidden_size]
-        converted[f"{layer_prefix}.self_attn.k_proj.bias"] = in_proj_bias[hidden_size:2*hidden_size]
-        converted[f"{layer_prefix}.self_attn.v_proj.bias"] = in_proj_bias[2*hidden_size:]
-
-    # Output projection (pass through)
-    out_proj_key = f"{layer_prefix}.self_attn.out_proj.weight"
-    if out_proj_key in weights:
-        converted[f"{layer_prefix}.self_attn.out_proj.weight"] = weights[out_proj_key]
-    out_proj_bias_key = f"{layer_prefix}.self_attn.out_proj.bias"
-    if out_proj_bias_key in weights:
-        converted[f"{layer_prefix}.self_attn.out_proj.bias"] = weights[out_proj_bias_key]
-
-    # FFN layers (pass through with name mapping)
-    for suffix in [".linear1.weight", ".linear1.bias", ".linear2.weight", ".linear2.bias",
-                   ".norm1.weight", ".norm1.bias", ".norm2.weight", ".norm2.bias"]:
+        b = weights[in_proj_bias_key]
+        h = b.shape[0] // 3
+        converted[f"{layer_prefix}.self_attn.q_proj.bias"] = b[:h]
+        converted[f"{layer_prefix}.self_attn.k_proj.bias"] = b[h : 2 * h]
+        converted[f"{layer_prefix}.self_attn.v_proj.bias"] = b[2 * h :]
+    for suffix in (
+        ".self_attn.out_proj.weight",
+        ".self_attn.out_proj.bias",
+        ".linear1.weight",
+        ".linear1.bias",
+        ".linear2.weight",
+        ".linear2.bias",
+        ".norm1.weight",
+        ".norm1.bias",
+        ".norm2.weight",
+        ".norm2.bias",
+    ):
         key = layer_prefix + suffix
         if key in weights:
             converted[key] = weights[key]
-
     return converted
 
 
-def process_gliner2_weights(
-    model_weights: Dict[str, torch.Tensor]
-) -> Dict[str, torch.Tensor]:
-    """
-    Process and convert GLiNER2-specific weights.
+def convert_to_swift_keys(weights: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    """Full PyTorch checkpoint -> Swift-keyed tensor dict (encoder kept prefixed)."""
+    encoder = {k: v for k, v in weights.items() if k.startswith("encoder.")}
+    model = {k: v for k, v in weights.items() if not k.startswith("encoder.")}
 
-    This handles:
-    - Transformer layer splitting (Q, K, V from in_proj)
-    - Name mapping to Swift conventions
-    - Data type conversion if needed
-    """
-    converted = {}
+    for name in encoder:
+        if "pos_key_proj" in name or "pos_query_proj" in name:
+            print(f"WARNING: unexpected position projection weight {name} "
+                  "(share_att_key should be true for gliner2-base-v1)")
 
-    # Process DownscaledTransformer layers
-    for layer_idx in [0, 1]:
-        layer_prefix = f"count_embed.transformer.transformer.layers.{layer_idx}"
-        layer_weights = convert_transformer_layer_weights(model_weights, layer_prefix)
+    out: Dict[str, torch.Tensor] = dict(encoder)  # encoder passes through unchanged
 
-        # Apply name mapping to converted layer weights
-        for name, tensor in layer_weights.items():
-            swift_name = map_weight_name(name)
-            converted[swift_name] = tensor
+    # DownscaledTransformer layers need in_proj splitting before name mapping.
+    for layer_idx in (0, 1):
+        prefix = f"count_embed.transformer.transformer.layers.{layer_idx}"
+        for name, tensor in convert_transformer_layer_weights(model, prefix).items():
+            out[map_weight_name(name)] = tensor
+        for key in [k for k in model if k.startswith(prefix)]:
+            del model[key]
 
-        # Remove original combined weights
-        for key in list(model_weights.keys()):
-            if key.startswith(layer_prefix):
-                del model_weights[key]
-
-    # Process remaining weights with name mapping
-    for name, tensor in model_weights.items():
-        swift_name = map_weight_name(name)
-        converted[swift_name] = tensor
-
-    return converted
+    for name, tensor in model.items():
+        out[map_weight_name(name)] = tensor
+    return out
 
 
-def save_weight_mapping(
-    pytorch_names: list[str],
-    output_dir: Path
-) -> None:
-    """Save weight name mapping for debugging."""
-    mapping = {}
-    for name in pytorch_names:
-        mapping[name] = map_weight_name(name)
+# ---------------------------------------------------------------------------
+# Precision + quantization (MLX)
+# ---------------------------------------------------------------------------
 
-    with open(output_dir / "weight_mapping.json", "w") as f:
-        json.dump(mapping, f, indent=2)
+DTYPES = {
+    "float32": mx.float32, "fp32": mx.float32,
+    "float16": mx.float16, "fp16": mx.float16,
+    "bfloat16": mx.bfloat16, "bf16": mx.bfloat16,
+}
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Convert GLiNER2 weights to MLX format")
-    parser.add_argument(
-        "--model",
-        type=str,
-        default="fastino/gliner2-base-v1",
-        help="HuggingFace model ID or local path"
+def to_mx_float32(t: torch.Tensor) -> mx.array:
+    """torch tensor -> mx.array. Floats go via float32 numpy; ints preserved."""
+    if t.is_floating_point():
+        return mx.array(t.detach().to(torch.float32).cpu().numpy())
+    return mx.array(t.detach().cpu().numpy())
+
+
+def should_quantize(key: str, arr: mx.array, group_size: int, include_embeddings: bool) -> bool:
+    """Exactly the set `Extractor.quantize(.int8)` touches: encoder Linear weights
+    (2-D `.weight` under `encoder.`, excluding the 1-D LayerNorms and the non-module
+    `rel_embeddings`) plus, optionally, the word-embedding table."""
+    if not key.startswith("encoder.") or not key.endswith(".weight"):
+        return False
+    if arr.ndim != 2 or "rel_embeddings" in key:
+        return False
+    if "word_embeddings" in key and not include_embeddings:
+        return False
+    return arr.shape[-1] % group_size == 0
+
+
+def build_output_weights(
+    swift_weights: Dict[str, torch.Tensor],
+    dtype: str,
+    quantize: bool,
+    bits: int,
+    group_size: int,
+    include_embeddings: bool,
+):
+    """Return (arrays_for_safetensors, num_quantized). When quantizing, non-quantized
+    floats are fp16 (a quantized checkpoint is inherently fp16 + packed int)."""
+    residual = mx.float16 if quantize else DTYPES[dtype]
+    out: Dict[str, mx.array] = {}
+    num_quantized = 0
+
+    for key, tensor in swift_weights.items():
+        arr = to_mx_float32(tensor)
+        is_float = tensor.is_floating_point()
+
+        if quantize and should_quantize(key, arr, group_size, include_embeddings):
+            wq, scales, biases = mx.quantize(arr.astype(mx.float16),
+                                             group_size=group_size, bits=bits)
+            base = key[: -len(".weight")]
+            out[key] = wq
+            out[base + ".scales"] = scales
+            out[base + ".biases"] = biases
+            num_quantized += 1
+        else:
+            out[key] = arr.astype(residual) if is_float else arr
+
+    mx.eval(list(out.values()))
+    return out, num_quantized
+
+
+# ---------------------------------------------------------------------------
+# Directory assembly + Hub push
+# ---------------------------------------------------------------------------
+
+def write_config(model: str, output_dir: Path, quantize: bool, bits: int, group_size: int) -> None:
+    """Copy the source config.json, adding a `quantization` block when quantized."""
+    src = resolve_source_file(model, "config.json")
+    config = json.load(open(src)) if src else {
+        "model_type": "extractor",
+        "counting_layer": "count_lstm_v2",
+        "max_width": 8,
+        "model_name": "microsoft/deberta-v3-base",
+        "token_pooling": "first",
+    }
+    if quantize:
+        config["quantization"] = {"group_size": group_size, "bits": bits}
+    with open(output_dir / "config.json", "w") as f:
+        json.dump(config, f, indent=2)
+
+
+def copy_side_cars(model: str, output_dir: Path) -> None:
+    """Copy tokenizer files (config.json is handled by write_config)."""
+    for name in SIDE_CAR_FILES:
+        if name == "config.json":
+            continue
+        src = resolve_source_file(model, name)
+        if src:
+            shutil.copyfile(src, output_dir / name)
+            print(f"  copied {name}")
+
+
+def push_to_hub(output_dir: Path, repo_id: str, private: bool, message: str) -> None:
+    from huggingface_hub import HfApi
+
+    api = HfApi()
+    api.create_repo(repo_id, private=private, exist_ok=True, repo_type="model")
+    api.upload_folder(folder_path=str(output_dir), repo_id=repo_id, commit_message=message)
+    print(f"Pushed {output_dir} -> https://huggingface.co/{repo_id}")
+
+
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Convert a GLiNER2 PyTorch checkpoint to an MLX model directory."
     )
-    parser.add_argument(
-        "--output",
-        type=str,
-        default="../weights",
-        help="Output directory for converted weights"
-    )
-    parser.add_argument(
-        "--split-files",
-        action="store_true",
-        help="Output separate encoder and model weight files (legacy mode)"
-    )
-    parser.add_argument(
-        "--dtype",
-        type=str,
-        default="float32",
-        choices=["float32", "float16", "bfloat16"],
-        help="Output data type"
-    )
+    parser.add_argument("--model", default="fastino/gliner2-base-v1",
+                        help="Source: HuggingFace id or local directory")
+    parser.add_argument("--output", required=True, help="Output model directory")
+    parser.add_argument("--dtype", default="fp16",
+                        choices=sorted(DTYPES.keys()),
+                        help="Precision for the non-quantized weights (default: fp16)")
+    parser.add_argument("--quantize", choices=["int8"], default=None,
+                        help="Also quantize the encoder to int8 (affine, group 64)")
+    parser.add_argument("--q-bits", type=int, default=8, help="Quantization bits")
+    parser.add_argument("--q-group-size", type=int, default=64, help="Quantization group size")
+    parser.add_argument("--no-quantize-embeddings", action="store_true",
+                        help="Leave the word-embedding table at fp16 when quantizing "
+                             "(the largest tensor; excluding it forfeits most of the memory win)")
+    parser.add_argument("--push-to-hub", metavar="REPO_ID", default=None,
+                        help="Upload the output directory to this HuggingFace repo")
+    parser.add_argument("--private", action="store_true", help="Create the Hub repo private")
+    parser.add_argument("--commit-message", default="Add converted GLiNER2 MLX weights")
     args = parser.parse_args()
 
+    quantize = args.quantize == "int8"
+    include_embeddings = quantize and not args.no_quantize_embeddings
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading weights from: {args.model}")
     weights = get_pytorch_weights(args.model)
-    print(f"Loaded {len(weights)} weight tensors")
+    print(f"  {len(weights)} source tensors")
 
-    # Split encoder and model weights
-    encoder_weights, model_weights = split_encoder_weights(weights)
-    print(f"Encoder weights: {len(encoder_weights)}")
-    print(f"Model weights: {len(model_weights)}")
+    swift_weights = convert_to_swift_keys(weights)
+    print(f"  {len(swift_weights)} Swift-keyed tensors")
 
-    # Save original name mapping for debugging
-    save_weight_mapping(list(weights.keys()), output_dir)
-    print(f"Saved weight mapping to {output_dir / 'weight_mapping.json'}")
+    print(f"Building {'int8-quantized ' if quantize else ''}weights (residual dtype "
+          f"{'fp16' if quantize else args.dtype})...")
+    out_arrays, num_quantized = build_output_weights(
+        swift_weights, args.dtype, quantize, args.q_bits, args.q_group_size, include_embeddings
+    )
+    if quantize:
+        print(f"  quantized {num_quantized} tensors to {args.q_bits}-bit "
+              f"(group {args.q_group_size}, embeddings {'in' if include_embeddings else 'ex'}cluded)")
 
-    # Convert GLiNER2 model weights (with Swift name mapping)
-    converted_model_weights = process_gliner2_weights(model_weights.copy())
+    weights_path = output_dir / "model.safetensors"
+    mx.save_safetensors(str(weights_path), out_arrays,
+                        metadata={"format": "mlx", "converter": "convert_weights.py"})
+    size_mb = weights_path.stat().st_size / (1024 * 1024)
+    print(f"Saved {weights_path} ({size_mb:.0f} MB, {len(out_arrays)} tensors)")
 
-    # Process and validate encoder weights (keeps encoder. prefix)
-    processed_encoder = process_deberta_encoder_weights(encoder_weights)
+    write_config(args.model, output_dir, quantize, args.q_bits, args.q_group_size)
+    copy_side_cars(args.model, output_dir)
 
-    if args.split_files:
-        # Legacy mode: output separate files
-        # Convert to target dtype
-        if args.dtype == "float16":
-            converted_model_weights = {k: v.half() for k, v in converted_model_weights.items()}
-        elif args.dtype == "bfloat16":
-            converted_model_weights = {k: v.bfloat16() for k, v in converted_model_weights.items()}
+    print("\n" + "=" * 60)
+    print("Conversion complete.")
+    print(f"  {output_dir}")
+    print('  Load in Swift:  GLiNER2.fromPretrained("<dir>")')
+    print("=" * 60)
 
-        # Save converted model weights
-        model_output = output_dir / "gliner2_weights.safetensors"
-        save_file(converted_model_weights, str(model_output))
-        print(f"Saved model weights to {model_output}")
-        print(f"  - {len(converted_model_weights)} tensors")
-        total_params = sum(t.numel() for t in converted_model_weights.values())
-        print(f"  - {total_params:,} parameters")
-
-        # Convert encoder weights dtype
-        if args.dtype == "float16":
-            processed_encoder = {k: v.half() for k, v in processed_encoder.items()}
-        elif args.dtype == "bfloat16":
-            processed_encoder = {k: v.bfloat16() for k, v in processed_encoder.items()}
-
-        encoder_output = output_dir / "encoder_weights.safetensors"
-        save_file(processed_encoder, str(encoder_output))
-        print(f"Saved encoder weights to {encoder_output}")
-        print(f"  - {len(processed_encoder)} tensors")
-        encoder_params = sum(t.numel() for t in processed_encoder.values())
-        print(f"  - {encoder_params:,} parameters")
-
-        # Print summary
-        print("\n" + "=" * 60)
-        print("Conversion complete! (split files mode)")
-        print("=" * 60)
-        print(f"Output directory: {output_dir}")
-        print("\nFiles created:")
-        print(f"  - gliner2_weights.safetensors")
-        print(f"  - encoder_weights.safetensors")
-        print(f"  - weight_mapping.json")
-    else:
-        # Default mode: single combined file
-        # Combine all weights into single dict
-        all_weights = {}
-
-        # Add encoder weights (keeps encoder. prefix)
-        all_weights.update(processed_encoder)
-
-        # Add model weights (with Swift name mapping)
-        all_weights.update(converted_model_weights)
-
-        # Convert to target dtype
-        if args.dtype == "float16":
-            all_weights = {k: v.half() for k, v in all_weights.items()}
-        elif args.dtype == "bfloat16":
-            all_weights = {k: v.bfloat16() for k, v in all_weights.items()}
-
-        # Save single combined file
-        combined_output = output_dir / "model.safetensors"
-        save_file(all_weights, str(combined_output))
-        print(f"Saved combined weights to {combined_output}")
-        print(f"  - {len(all_weights)} tensors")
-        total_params = sum(t.numel() for t in all_weights.values())
-        print(f"  - {total_params:,} parameters")
-
-        # Print summary
-        print("\n" + "=" * 60)
-        print("Conversion complete! (single file mode)")
-        print("=" * 60)
-        print(f"Output directory: {output_dir}")
-        print("\nFiles created:")
-        print(f"  - model.safetensors")
-        print(f"  - weight_mapping.json")
-
-    # Print encoder structure info
-    print("\nDeBERTa encoder structure:")
-    embedding_keys = [k for k in processed_encoder if "embeddings" in k]
-    layer_keys = [k for k in processed_encoder if "layer.0." in k]
-    print(f"  - Embedding weights: {len(embedding_keys)}")
-    print(f"  - Weights per layer: {len(layer_keys)}")
-    if "encoder.encoder.rel_embeddings.weight" in processed_encoder:
-        rel_shape = list(processed_encoder["encoder.encoder.rel_embeddings.weight"].shape)
-        print(f"  - Rel embeddings shape: {rel_shape}")
-
-    print("\nKey weight shapes (GLiNER2 model):")
-    shape_info = [
-        ("GRU weight_ih", converted_model_weights.get("countEmbed.gru.weightIH")),
-        ("GRU weight_hh", converted_model_weights.get("countEmbed.gru.weightHH")),
-        ("Pos embedding", converted_model_weights.get("countEmbed.posEmbedding.weight")),
-    ]
-    for name, tensor in shape_info:
-        if tensor is not None:
-            print(f"  - {name}: {list(tensor.shape)}")
-
-    print("\nKey weight shapes (DeBERTa encoder):")
-    encoder_shape_info = [
-        ("Word embeddings", processed_encoder.get("encoder.embeddings.word_embeddings.weight")),
-        ("Rel embeddings", processed_encoder.get("encoder.encoder.rel_embeddings.weight")),
-        ("Query proj L0", processed_encoder.get("encoder.encoder.layer.0.attention.self.query_proj.weight")),
-        ("Key proj L0", processed_encoder.get("encoder.encoder.layer.0.attention.self.key_proj.weight")),
-    ]
-    for name, tensor in encoder_shape_info:
-        if tensor is not None:
-            print(f"  - {name}: {list(tensor.shape)}")
+    if args.push_to_hub:
+        push_to_hub(output_dir, args.push_to_hub, args.private, args.commit_message)
 
 
 if __name__ == "__main__":
