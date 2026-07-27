@@ -185,13 +185,13 @@ public class DisentangledSelfAttention: Module {
     public let maxPosition: Int
 
     /// Query projection (shared for content and position)
-    public let queryProj: Linear
+    @ModuleInfo public var queryProj: Linear
 
     /// Key projection (shared for content and position)
-    public let keyProj: Linear
+    @ModuleInfo public var keyProj: Linear
 
     /// Value projection
-    public let valueProj: Linear
+    @ModuleInfo public var valueProj: Linear
 
     // NOTE: Output projection is handled by DeBERTaLayer.attentionOutputDense
     // DO NOT add outProj here - it causes double projection with random weights!

@@ -343,8 +343,107 @@ the computation into the existing parse loop did *not* help — the cost was the
 `count` calls themselves, not the extra pass. Worth measuring cold start, not just p50,
 whenever load-time work changes.
 
-Phases 2 and 3 are now complete. Cumulative since the Phase 0 baseline:
+Phases 2 and 3 are complete. Cumulative since the Phase 0 baseline:
 8-label NER **32.18 -> 19.77 ms (-38.6 %)**, mixed schema **41.89 -> 26.57 (-36.6 %)**,
 long text **76.25 -> 41.91 (-45.0 %)**, batch-32 **340.85 -> 221.33 (-35.1 %)**.
 Cold start 413 -> 429 ms and peak memory is roughly flat (433 -> 450 MB on short text,
 656 -> 644 MB on the long document).
+
+---
+
+## After PR12 (Phase 4.1-4.3: dtype policy and pinning) — 2026-07-20
+
+| scenario | PR11 p50 | PR12 p50 | change |
+|---|---|---|---|
+| 1-ner-8-labels | 19.77 | 19.89 | ~0 |
+| 2-mixed-schema | 26.57 | **25.43** | **-4.3 %** |
+| 3-long-text | 41.91 | 41.78 | ~0 |
+| 4-batch-32 | 221.33 | 221.72 | ~0 |
+
+209 tests pass (4 new). Prediction parity unchanged at 55/58 against both the fp16
+snapshot and the fp32 reference.
+
+### What was actually running in fp32
+
+The plan predicted this and it was right: `DownscaledTransformer` built its attention
+divisor as `MLXArray(sqrt(Float(headDim)))`, a strongly typed float32 array. Array-to-array
+promotion then made everything downstream of `countEmbed` float32 — including the span
+score einsum and its sigmoid — so an fp16 checkpoint computed its final scores in fp32.
+A Swift scalar divisor adopts the array's dtype instead. Two more of the same shape were
+found by audit: the GRU's zero initial hidden state (`MLXArray.zeros` defaults to float32,
+which promoted the whole recurrence) and three empty-guard `zeros`.
+
+The gain lands on the structure-bearing scenario, which runs the count-aware path with the
+most fields and instances. Peak memory does not move measurably — these are activations at
+small shapes, not weights.
+
+### A second, larger finding: `parameters()` was reporting untrained tensors
+
+The new dtype-pinning test failed at first, reporting five float32 parameters under an
+all-fp16 checkpoint: the four GRU weights and `encoder.relEmbeddings`. The forward pass
+was using fp16 for all five. The discrepancy is the Appendix A §8 trap, and it is worse
+than a dtype cosmetic issue: `Module` reflection captures each stored `MLXArray` property
+**once, at init**, so the direct assignments in `GRU.loadWeights` and
+`DeBERTaEncoder.loadWeights` swapped the properties while leaving reflection pointing at
+the random initialization. `parameters()` therefore reported untrained tensors — for the
+whole life of the model — while inference used the loaded ones.
+
+Nothing on the current inference path reads `parameters()`, which is why this never
+surfaced. It would have surfaced in Phase 4.4 (`quantize` traverses parameters and
+modules) and in Phase 5.1 (`compile` captures module state through `inputs:`/`outputs:`).
+Both loaders now go through `update(parameters:)`, which replaces the array's context in
+place: reflection stays correct and array identity is preserved for compiled graphs.
+
+### Compute-dtype cross-check
+
+fp16 versus an fp32 cast of the *same* snapshot — the only comparison that isolates
+compute dtype, since comparing against the fp32 reference checkpoint would fail on weight
+rounding alone. Over 36 confidences across 3 texts x 3 thresholds: **identical extracted
+spans**, max |fp16 - fp32| confidence delta **0.00088**, far inside tier C's ±0.02.
+
+One nuance worth knowing: two spans can swap places in the output list. fp16 has enough
+resolution that "Kenya" and "Rwanda" in one sentence round to the **exact same** confidence
+(observed gap 0.0), and the sort that orders results by confidence then has nothing to
+separate them. The extracted set is unaffected, which is what the parity gate is defined
+on, but callers who care about list order should not treat it as stable across dtypes.
+The test asserts set equality and requires any order flip to be a genuine near-tie.
+---
+
+## Phase 4.4 (measured, NOT enabled by default) — 2026-07-20
+
+8-bit `QuantizedLinear` over the encoder, group size 64. Each configuration loaded,
+measured and released on its own — holding two models at once makes memory meaningless,
+and an early run that did exactly that reported a bogus `-19.3 %`.
+
+| configuration | short p50 | long p50 | active MB | peak MB | corpus |
+|---|---|---|---|---|---|
+| fp16 (shipping) | 16.11 | 28.74 | 415 | 521 | **55/58** |
+| int8, Linear only | 15.56 (-3.4 %) | 26.88 (-6.5 %) | 341 | 436 | 53/58 |
+| int8, Linear + embeddings | 14.66 (-9.0 %) | 27.05 (-5.9 %) | **253** | **355** | 53/58 |
+
+**The memory win is large and the latency win is small — and neither is free.** Active
+memory drops 39 % when the `[128011, 768]` embedding table is included, which is the single
+biggest tensor in the model and where most of the saving lives. Latency moves a few per
+cent and bounces run to run, so it should not be the reason to enable this.
+
+The cost is two corpus cases. `borderline_accept_ner_many_labels` loses an entity whose
+confidence sits within a hair of the threshold, and `choices_list_dtype` moves a confidence
+by 0.021 — just outside the ±0.02 tier C allows. Both are borderline decisions rather than
+wholesale errors, and the corpus was deliberately built with ≥5 sub-0.05-margin cases per
+threshold, so it is doing exactly the job it was designed for.
+
+Per the plan's own rule — *ship only if predictions stay exact on the corpus* — this does
+not ship on by default. It is available as `fromPretrained(..., quantization: .int8)` with
+the accuracy cost documented on the type, and `PredictionParityTests` accepts
+`GLINER2_QUANTIZE=int8` so anyone considering it can re-measure on their own corpus.
+
+Worth noting for judgement: a four-sentence spot check agreed 12/12 under quantization.
+The 58-case corpus did not. Small hand-picked samples cannot answer this question.
+
+### Precondition that had to be fixed first
+
+`MLXNN.quantize` replaces children via `update(modules:)`, which throws `needModuleInfo`
+for any child not declared `@ModuleInfo`. The encoder's six `Linear` properties and
+`DeBERTaEmbeddings.wordEmbeddings` were plain `let`s and are now `@ModuleInfo var`. This
+is the correct declaration for a replaceable submodule regardless of quantization, and it
+composes with the reflection fix in PR12.

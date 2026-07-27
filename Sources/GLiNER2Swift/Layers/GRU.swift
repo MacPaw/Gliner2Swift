@@ -107,7 +107,10 @@ public class GRU: Module {
         if let h0 = h0 {
             h = h0.squeezed(axis: 0)  // [batch, hidden]
         } else {
-            h = MLXArray.zeros([batch, hiddenSize])
+            // In the weights' dtype: `MLXArray.zeros` defaults to float32, and the first
+            // `matmul(h, wHH)` would then promote the entire recurrence to float32 on an
+            // fp16 checkpoint.
+            h = MLXArray.zeros([batch, hiddenSize], dtype: weightHH.dtype)
         }
 
         // Hoist the weight transposes out of the recurrence, and project EVERY timestep's
@@ -244,18 +247,29 @@ extension GRU {
     public func loadWeights(_ weights: [String: MLXArray], prefix: String = "") {
         let p = prefix.isEmpty ? "" : "\(prefix)."
 
-        // Try camelCase (from convert_weights.py) first, then snake_case (raw PyTorch)
+        // Try camelCase (from convert_weights.py) first, then snake_case (raw PyTorch).
+        //
+        // Routed through `update(parameters:)` rather than assigned to the properties
+        // directly. `Module` reflection captures every stored `MLXArray` property once, at
+        // init; a later assignment swaps the property but leaves reflection pointing at the
+        // random init array, so `parameters()` keeps reporting the untrained tensor (and
+        // its dtype) forever. `update` replaces the array's context in place, which both
+        // keeps reflection correct and preserves array identity for compiled graphs.
+        var loaded: [String: MLXArray] = [:]
         if let wIH = weights["\(p)weightIH"] ?? weights["\(p)weight_ih_l0"] {
-            self.weightIH = wIH
+            loaded["weightIH"] = wIH
         }
         if let wHH = weights["\(p)weightHH"] ?? weights["\(p)weight_hh_l0"] {
-            self.weightHH = wHH
+            loaded["weightHH"] = wHH
         }
         if let bIH = weights["\(p)biasIH"] ?? weights["\(p)bias_ih_l0"] {
-            self.biasIH = bIH
+            loaded["biasIH"] = bIH
         }
         if let bHH = weights["\(p)biasHH"] ?? weights["\(p)bias_hh_l0"] {
-            self.biasHH = bHH
+            loaded["biasHH"] = bHH
+        }
+        if !loaded.isEmpty {
+            update(parameters: ModuleParameters.unflattened(loaded))
         }
 
         // Update sizes based on loaded weights

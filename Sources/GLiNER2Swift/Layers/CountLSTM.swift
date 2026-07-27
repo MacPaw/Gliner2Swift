@@ -72,7 +72,7 @@ public class CountLSTM: Module {
         // Cap count value
         let count = min(goldCountVal, maxCount)
         guard count > 0 else {
-            return MLXArray.zeros([0, M, D])
+            return MLXArray.zeros([0, M, D], dtype: pcEmb.dtype)
         }
 
         // Get positional embeddings: (count,) -> (count, D)
@@ -154,7 +154,7 @@ public class CountLSTMv2: Module {
         // Cap count value
         let count = min(goldCountVal, maxCount)
         guard count > 0 else {
-            return MLXArray.zeros([0, M, D])
+            return MLXArray.zeros([0, M, D], dtype: pcEmb.dtype)
         }
 
         // Get positional embeddings: (count,) -> (count, D)

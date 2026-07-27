@@ -306,9 +306,13 @@ extension DeBERTaEncoder {
             layer.loadWeights(weights, prefix: "\(p)encoder.layer.\(i)")
         }
 
-        // Load shared relative position embeddings
+        // Load shared relative position embeddings.
+        //
+        // Via `update(parameters:)`, not by assigning the property: reflection captured
+        // this array at init, and a direct assignment would leave `parameters()` reporting
+        // the random initialization for the life of the model (see GRU.loadWeights).
         if let relW = weights["\(p)encoder.rel_embeddings.weight"] {
-            relEmbeddings = relW
+            update(parameters: ModuleParameters.unflattened(["relEmbeddings": relW]))
         }
 
         // Load LayerNorm for relative embeddings (NOT final output LayerNorm!)

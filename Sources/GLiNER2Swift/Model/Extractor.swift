@@ -238,7 +238,82 @@ public struct SpanInfo {
 
 // MARK: - Weight Loading
 
+/// What to do with a checkpoint's floating-point weights at load time.
+public enum DTypePolicy: Sendable {
+    /// Keep whatever the checkpoint stores: an fp16 file loads as fp16, fp32 as fp32.
+    case auto
+    case float16
+    case bfloat16
+    case float32
+
+    var target: DType? {
+        switch self {
+        case .auto: return nil
+        case .float16: return .float16
+        case .bfloat16: return .bfloat16
+        case .float32: return .float32
+        }
+    }
+
+    /// Cast every floating-point tensor, leaving integer tensors alone.
+    ///
+    /// There is no global compute dtype in MLX — activations take their dtype from the
+    /// weights that produce them — so this is the only place the choice is made.
+    func apply(to weights: [String: MLXArray]) -> [String: MLXArray] {
+        guard let target else { return weights }
+        return weights.mapValues { $0.dtype.isFloatingPoint ? $0.asType(target) : $0 }
+    }
+}
+
+/// Optional 8-bit quantization of the encoder, applied after weights are loaded.
+///
+/// **This trades accuracy for memory. It is off by default and should stay off unless the
+/// memory matters more than exactness on your data.**
+///
+/// Measured on the canonical fp16 snapshot (M3 Pro): active memory 415 -> 253 MB, peak
+/// 521 -> 355 MB, and a few per cent off latency. The embedding table is `[128011, 768]`,
+/// the single largest tensor in the model, so `includeEmbeddings: false` gives up most of
+/// the memory win (415 -> 341 MB) for no accuracy benefit that has been measured.
+///
+/// The cost, on the 58-case prediction-parity corpus: **53 cases match Python instead of
+/// 55**. One entity whose confidence sits within a hair of the threshold is dropped, and
+/// one confidence moves 0.021 — just outside the ±0.02 the plan allows for fp16. Both are
+/// borderline decisions rather than wholesale errors, but they are real, and they are why
+/// this is not the default. Re-run `PredictionParityTests` with `GLINER2_QUANTIZE=int8`
+/// against your own corpus before enabling it.
+public enum QuantizationPolicy: Sendable, Equatable {
+    case none
+
+    /// 8-bit, group size 64. `includeEmbeddings: false` restricts it to the encoder's
+    /// `Linear` layers, leaving the token embedding table at full precision.
+    case int8(includeEmbeddings: Bool)
+
+    /// 8-bit over the encoder's linear layers and the embedding table.
+    public static let int8 = QuantizationPolicy.int8(includeEmbeddings: true)
+}
+
 extension Extractor {
+
+    /// Whether `quantize(_:)` has been applied.
+    ///
+    /// Loading a LoRA adapter afterwards would write full-precision matrices over
+    /// `QuantizedLinear`'s packed weights, so that combination is rejected rather than
+    /// silently corrupting the model.
+    public var isQuantized: Bool {
+        encoder.leafModules().flattened().contains { $0.1 is QuantizedLinear }
+    }
+
+    /// Apply a quantization policy to the encoder. Call after weights are loaded.
+    public func quantize(_ policy: QuantizationPolicy) {
+        guard case .int8(let includeEmbeddings) = policy else { return }
+
+        MLXNN.quantize(model: encoder, groupSize: 64, bits: 8) { _, module in
+            module is Linear || (includeEmbeddings && module is Embedding)
+        }
+        // The relative-position projections are derived from the query/key weights that
+        // were just replaced.
+        encoder.resetCaches()
+    }
 
     // MARK: - Format Detection
 
@@ -313,10 +388,12 @@ extension Extractor {
     /// Auto-detects whether the file contains raw PyTorch keys or pre-converted keys.
     /// Both formats are supported transparently.
     ///
-    /// - Parameter url: URL to model.safetensors (combined weights file)
-    public func loadWeights(from url: URL) throws {
+    /// - Parameters:
+    ///   - url: URL to model.safetensors (combined weights file)
+    ///   - dtype: Floating-point policy to apply to the loaded weights
+    public func loadWeights(from url: URL, dtype: DTypePolicy = .auto) throws {
         let rawWeights = try loadArrays(url: url)
-        let weights = Extractor.sanitize(weights: rawWeights)
+        let weights = dtype.apply(to: Extractor.sanitize(weights: rawWeights))
 
         // Load encoder weights (keys starting with "encoder.")
         encoder.loadWeights(weights, prefix: "encoder")
@@ -330,14 +407,18 @@ extension Extractor {
     /// - Parameters:
     ///   - modelWeightsUrl: URL to gliner2_weights.safetensors
     ///   - encoderWeightsUrl: URL to encoder_weights.safetensors
-    public func loadWeights(modelWeightsUrl: URL, encoderWeightsUrl: URL) throws {
+    public func loadWeights(
+        modelWeightsUrl: URL,
+        encoderWeightsUrl: URL,
+        dtype: DTypePolicy = .auto
+    ) throws {
         // Load model weights
         let rawModelWeights = try loadArrays(url: modelWeightsUrl)
-        let modelWeights = Extractor.sanitize(weights: rawModelWeights)
+        let modelWeights = dtype.apply(to: Extractor.sanitize(weights: rawModelWeights))
         loadModelWeights(modelWeights)
 
         // Load encoder weights
-        let encoderWeights = try loadArrays(url: encoderWeightsUrl)
+        let encoderWeights = try dtype.apply(to: loadArrays(url: encoderWeightsUrl))
         encoder.loadWeights(encoderWeights, prefix: "encoder")
     }
 

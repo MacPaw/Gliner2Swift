@@ -60,10 +60,16 @@ public class GLiNER2 {
     ///
     /// - Parameters:
     ///   - pathOrRepo: HuggingFace repo ID or local path
+    ///   - dtype: Floating-point policy for the loaded weights. `.auto` keeps the
+    ///     checkpoint's own dtype, which is what the shipped fp16 model wants.
+    ///   - quantization: Optional 8-bit encoder quantization. Off by default; `.int8`
+    ///     cuts memory substantially at unchanged predictions (see `QuantizationPolicy`).
     ///   - progressHandler: Optional progress callback for Hub downloads
     /// - Returns: Initialized GLiNER2 model
     public static func fromPretrained(
         _ pathOrRepo: String,
+        dtype: DTypePolicy = .auto,
+        quantization: QuantizationPolicy = .none,
         progressHandler: @Sendable @escaping (Progress) -> Void = { _ in }
     ) async throws -> GLiNER2 {
         // Determine if local path or HuggingFace repo
@@ -126,20 +132,24 @@ public class GLiNER2 {
 
         // 4. Load weights - try combined file first, fall back to split files
         if let combinedUrl = combinedWeightsUrl {
-            try gliner2.model.loadWeights(from: combinedUrl)
+            try gliner2.model.loadWeights(from: combinedUrl, dtype: dtype)
             gliner2.baseWeightsUrl = combinedUrl
         } else if let modelUrl = splitModelWeightsUrl,
                   let encoderUrl = splitEncoderWeightsUrl {
             try gliner2.model.loadWeights(
                 modelWeightsUrl: modelUrl,
-                encoderWeightsUrl: encoderUrl
+                encoderWeightsUrl: encoderUrl,
+                dtype: dtype
             )
             gliner2.baseWeightsUrl = modelUrl
         } else {
             throw GLiNER2Error.fileNotFound("model weights")
         }
 
-        // 5. Set to evaluation mode (disables dropout)
+        // 5. Optional quantization, after the real weights are in place
+        gliner2.model.quantize(quantization)
+
+        // 6. Set to evaluation mode (disables dropout)
         gliner2.model.train(false)
         gliner2.model.freeze()
 
@@ -182,6 +192,13 @@ public class GLiNER2 {
     public func loadAdapter(from adapterPath: String) throws {
         guard let baseUrl = baseWeightsUrl else {
             throw GLiNER2Error.weightLoadingFailed("Base weights URL not available for adapter merging")
+        }
+        guard !model.isQuantized else {
+            // Merging writes full-precision matrices into the encoder's Linear layers;
+            // against QuantizedLinear's packed weights that corrupts the model silently.
+            throw GLiNER2Error.weightLoadingFailed(
+                "Cannot load a LoRA adapter into a quantized model — load the adapter first, "
+                + "or reload without quantization")
         }
         let adapterUrl = URL(fileURLWithPath: adapterPath)
         try model.loadWeightsWithLoRA(baseWeightsUrl: baseUrl, adapterPath: adapterUrl)
@@ -581,7 +598,7 @@ public class GLiNER2 {
         poolingType: TokenPoolingType
     ) -> MLXArray {
         guard subwordEmbeddings.dim(0) > 0, !wordFirstIndices.isEmpty else {
-            return MLXArray.zeros([0, config.hiddenSize])
+            return MLXArray.zeros([0, config.hiddenSize], dtype: subwordEmbeddings.dtype)
         }
 
         if poolingType == .first {

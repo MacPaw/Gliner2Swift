@@ -53,16 +53,16 @@ public class DeBERTaLayer: Module {
     public let attention: DisentangledSelfAttention
 
     /// Attention output dense
-    public let attentionOutputDense: Linear
+    @ModuleInfo public var attentionOutputDense: Linear
 
     /// Attention output LayerNorm
     public let attentionLayerNorm: LayerNorm
 
     /// Intermediate (FFN first) dense
-    public let intermediateDense: Linear
+    @ModuleInfo public var intermediateDense: Linear
 
     /// Output (FFN second) dense
-    public let outputDense: Linear
+    @ModuleInfo public var outputDense: Linear
 
     /// Output LayerNorm
     public let outputLayerNorm: LayerNorm

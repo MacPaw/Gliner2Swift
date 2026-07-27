@@ -187,7 +187,21 @@ final class PredictionParityTests: XCTestCase {
         try TestModel.requireGPU()
         let corpus = try loadCorpus()
         let modelPath = try TestModel.requireFP16Model()
-        let model = try await GLiNER2.fromPretrained(modelPath)
+
+        // Setting GLINER2_QUANTIZE=int8 (or int8-linear) runs the whole corpus against a
+        // quantized model. That is the gate Phase 4.4 has to clear before quantization can
+        // be recommended: the same 55 cases must pass, not a hand-picked handful.
+        let quantization: QuantizationPolicy
+        switch ProcessInfo.processInfo.environment["GLINER2_QUANTIZE"] {
+        case "int8": quantization = .int8
+        case "int8-linear": quantization = .int8(includeEmbeddings: false)
+        default: quantization = .none
+        }
+        if quantization != .none {
+            print("  quantization:      \(quantization)")
+        }
+
+        let model = try await GLiNER2.fromPretrained(modelPath, quantization: quantization)
 
         var failures: [String] = []          // unexpected divergence -> test fails
         var expectedFailures: [String] = []  // known divergence, tagged to a plan phase
