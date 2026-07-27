@@ -1,19 +1,15 @@
 # GLiNER2 on-device benchmark
 
-A minimal "speedtest"-style iOS app: it loads the GLiNER2 model at a chosen precision
-(**fp16** or **int8**), runs a fixed set of extraction scenarios, and shows a table of
-latency, throughput, and memory. Tap **Share** to send the results back as Markdown.
+A minimal "speedtest"-style iOS app with two tabs:
 
-Screenshot of what it reports, per precision:
-
-| scenario | p50 ms | tok/s | peak MB |
-|---|---|---|---|
-| ner-8-labels | … | … | … |
-| mixed-schema | … | … | … |
-| long-text | … | … | … |
-| batch-16 | … | … | … |
-
-plus model-load time, MLX active/peak memory, and the app's resident footprint.
+- **Benchmark** — loads the model at a chosen precision (**fp16** or **int8**), runs four
+  extraction scenarios (`ner-8-labels`, `mixed-schema`, `long-text`, `batch-16`), and shows
+  per-scenario latency (p50 / p90 / mean / min / max / std / ms-per-token), throughput, and
+  peak memory, plus model-load time, MLX active/peak/cache memory, the app's resident
+  footprint, and the real device name (e.g. "iPhone 13 Pro Max · A15 Bionic"). Tap **Share**
+  to send the results back as Markdown.
+- **Predictions** — a displaCy-style entity visualizer: type or pick text, choose entity
+  types, and see the recognized spans highlighted inline with their labels and confidences.
 
 ## 1. Produce a model directory
 
@@ -45,14 +41,20 @@ $GLINER2_VENV scripts/convert_weights.py \
 ## 2. Get the model onto the device — pick one
 
 **A. Bundle it (simplest, ~400 MB heavier app).**
-Drag `out/gliner2_mlx_fp16` into the Xcode project as a **folder reference** (choose
-"Create folder references" — the folder icon is *blue*, not yellow) and name it `Model`.
-`ModelLocator` finds it automatically.
+Copy the produced fp16 directory to `apps/GLiNER2Bench/Model` (the folder is gitignored):
+
+```sh
+cp -R out/gliner2_mlx_fp16 apps/GLiNER2Bench/Model
+```
+
+`project.yml` already references `Model` as a bundled folder, and `ModelLocator` finds it
+by that name — no manual dragging in Xcode. (If you skip this step, the project won't build
+until the `Model` folder exists.)
 
 **B. Download on first launch (small app).**
 Push the fp16 directory to the Hub, then set `ModelLocator.hubRepoId` in
-`Sources/ModelLocator.swift` to that repo id. The app downloads it into Application Support
-on first run.
+`Sources/ModelLocator.swift` to that repo id, and drop the `Model` line from `project.yml`.
+The app downloads the weights into Application Support on first run.
 
 ## 3. Create and run the app
 
@@ -71,10 +73,11 @@ open GLiNER2Bench.xcodeproj
    Add the `GLiNER2Swift` and `Hub` products to the app target.
 4. Add the model per §2.
 
-Then set your signing team under Signing & Capabilities, select your iPhone, and Run.
-First launch loads the model (a few hundred ms once resident), after which **Run
-benchmark** fills the table. Leave both precisions checked to get an fp16-vs-int8
-comparison in one pass.
+`project.yml` sets a `DEVELOPMENT_TEAM` and automatic signing — **replace it with your own
+team ID** (in `project.yml`, then regenerate, or override it in Xcode's Signing &
+Capabilities). Select your iPhone and Run. First launch loads the model (a few hundred ms
+once resident), after which **Run benchmark** fills the table. Leave both precisions checked
+to get an fp16-vs-int8 comparison in one pass.
 
 ## 4. Notes / current limitations
 
@@ -82,7 +85,7 @@ comparison in one pass.
   quantization: .int8)`), which is exactly what was measured on macOS: encoder Linear +
   embedding to 8-bit, everything else fp16. On an M3 Pro this took MLX steady-state memory
   from ~416 MB (fp16) to ~254 MB (int8); expect the same shape on device. Accuracy on the
-  parity corpus is 53/58 under int8 vs 58/58 at fp16 — two borderline cases move — so int8
+  parity corpus is 56/58 under int8 vs 58/58 at fp16 — two borderline cases move — so int8
   is a memory lever, not free.
 - **The on-disk int8 directory the script produces is now loadable directly** — pass its
   path to `fromPretrained` and it loads quantized (detected via the `quantization` config
@@ -93,11 +96,10 @@ comparison in one pass.
   precision toggle compare fp16 against runtime-int8 from a single model. (If you point it
   at the int8 directory instead, both toggle positions report int8 — you can't un-quantize
   a packed model.)
-- The benchmark **engine** (`BenchmarkEngine.swift`, `DeviceInfo.swift`) is validated on
-  macOS against the real library, including both precisions. The iOS build itself was not
-  compiled on the machine that wrote this (the iOS platform runtime wasn't installed
-  there); if the first build complains, it will be about signing or the model folder, not
-  the benchmark logic.
+- The whole app **compiles for iOS** (`arm64`, Metal shaders and all), and the benchmark
+  **engine** (`BenchmarkEngine.swift`, `DeviceInfo.swift`) is additionally validated on macOS
+  against the real library at both precisions. If a first build complains, it will be about
+  signing or the `Model` folder, not the benchmark logic.
 - Memory figures: **MLX active** is the steady-state unified memory held after a cache
   clear (the fairest number to compare precisions). **MLX peak** is the high-water mark
   during a scenario. **App RAM** is the process `phys_footprint` iOS's jetsam limit tracks.
