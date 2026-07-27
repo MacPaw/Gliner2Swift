@@ -25,9 +25,11 @@ targets:
     platform: iOS
     sources:
       - Sources
-      # Uncomment after dragging a converted fp16 model directory in here as "Model".
-      # - path: Model
-      #   type: folder
+      # The fp16 model directory, bundled as a folder reference. ModelLocator finds it as
+      # "Model". Produced by scripts/convert_weights.py and copied in here (gitignored).
+      - path: Model
+        type: folder
+        buildPhase: resources
     dependencies:
       - package: GLiNER2Swift
         product: GLiNER2Swift
@@ -41,5 +43,6 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         MARKETING_VERSION: "1.0"
         PRODUCT_BUNDLE_IDENTIFIER: com.example.gliner2bench
-        # Set your team here or in Xcode's Signing & Capabilities.
-        # DEVELOPMENT_TEAM: XXXXXXXXXX
+        # Personal-team automatic signing, so a project regeneration keeps it.
+        DEVELOPMENT_TEAM: NXXNT7U89C
+        CODE_SIGN_STYLE: Automatic

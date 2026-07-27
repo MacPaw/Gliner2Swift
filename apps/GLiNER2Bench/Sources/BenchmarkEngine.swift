@@ -52,20 +52,25 @@ public struct ScenarioResult: Identifiable, Sendable, Codable {
     public let name: String
     public let detail: String
     public let iterations: Int
+    // Latency, milliseconds.
     public let p50Ms: Double
     public let p90Ms: Double
     public let meanMs: Double
     public let minMs: Double
     public let maxMs: Double
-    public let tokens: Int          // input tokens processed per iteration
+    public let stdDevMs: Double        // run-to-run jitter
+    public let msPerToken: Double      // p50 latency ÷ input tokens
+    public let tokens: Int             // input tokens processed per iteration
     public let tokensPerSecond: Double
-    public let itemsFound: Int      // entities/structures/etc. surfaced (sanity signal)
-    public let peakMemoryMB: Double // MLX peak during this scenario
+    public let itemsFound: Int         // entities/structures/etc. surfaced (sanity signal)
+    public let peakMemoryMB: Double    // MLX peak during this scenario
 }
 
 public struct BenchmarkReport: Sendable, Codable {
     public let precision: Precision
-    public let device: String
+    public let deviceModel: String     // friendly, e.g. "iPhone 13 Pro Max"
+    public let deviceIdentifier: String// raw, e.g. "iPhone14,3"
+    public let chip: String?           // e.g. "A15 Bionic", when known
     public let osVersion: String
     public let processorCount: Int
     public let modelLoadMs: Double
@@ -77,22 +82,24 @@ public struct BenchmarkReport: Sendable, Codable {
     public let mlxCacheMB: Double
     public let processResidentMB: Double
 
-    /// A compact Markdown table — the "send me your results" payload.
+    /// A Markdown report — the "send me your results" payload. Units are in the headers.
     public func markdown() -> String {
+        let chipStr = chip.map { " · \($0)" } ?? ""
         var out = """
         ## GLiNER2Swift on-device benchmark — \(precision.label)
 
-        - Device: \(device), \(processorCount) cores, iOS \(osVersion)
+        - Device: \(deviceModel) (\(deviceIdentifier))\(chipStr) · \(processorCount) cores · iOS \(osVersion)
         - Model load: \(fmt(modelLoadMs)) ms
         - Memory: MLX active \(fmt(mlxActiveMB)) MB · MLX peak \(fmt(mlxPeakMB)) MB · app resident \(fmt(processResidentMB)) MB
 
-        | scenario | p50 ms | p90 ms | mean ms | tokens/s | found | peak MB |
-        |---|---|---|---|---|---|---|
+        | scenario | p50 (ms) | p90 (ms) | mean (ms) | std (ms) | ms/token | tokens/s | found | peak (MB) |
+        |---|---|---|---|---|---|---|---|---|
 
         """
         for s in scenarios {
             out += "| \(s.name) | \(fmt(s.p50Ms)) | \(fmt(s.p90Ms)) | \(fmt(s.meanMs)) "
-                + "| \(fmt(s.tokensPerSecond, 0)) | \(s.itemsFound) | \(fmt(s.peakMemoryMB)) |\n"
+                + "| \(fmt(s.stdDevMs)) | \(fmt(s.msPerToken, 2)) | \(fmt(s.tokensPerSecond, 0)) "
+                + "| \(s.itemsFound) | \(fmt(s.peakMemoryMB)) |\n"
         }
         return out
     }
@@ -159,6 +166,7 @@ public actor BenchmarkEngine {
 
             let peak = Double(MLX.Memory.snapshot().peakMemory) / 1_048_576
             let mean = samples.reduce(0, +) / Double(samples.count)
+            let variance = samples.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Double(samples.count)
             let tokens = scenario.tokenCount(model)
             let p50 = percentile(samples, 0.50)
             results.append(ScenarioResult(
@@ -170,6 +178,8 @@ public actor BenchmarkEngine {
                 meanMs: mean,
                 minMs: samples.first ?? 0,
                 maxMs: samples.last ?? 0,
+                stdDevMs: variance.squareRoot(),
+                msPerToken: tokens > 0 ? p50 / Double(tokens) : 0,
                 tokens: tokens,
                 tokensPerSecond: p50 > 0 ? Double(tokens) / (p50 / 1000) : 0,
                 itemsFound: found,
@@ -184,7 +194,9 @@ public actor BenchmarkEngine {
         progress(.done)
         return BenchmarkReport(
             precision: precision,
-            device: DeviceInfo.model,
+            deviceModel: DeviceInfo.model,
+            deviceIdentifier: DeviceInfo.identifier,
+            chip: DeviceInfo.chip,
             osVersion: DeviceInfo.osVersion,
             processorCount: ProcessInfo.processInfo.processorCount,
             modelLoadMs: loadMs,

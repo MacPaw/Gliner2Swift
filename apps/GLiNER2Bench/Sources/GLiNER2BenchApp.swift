@@ -21,7 +21,12 @@ import SwiftUI
 struct GLiNER2BenchApp: App {
     var body: some Scene {
         WindowGroup {
-            BenchmarkView()
+            TabView {
+                BenchmarkView()
+                    .tabItem { Label("Benchmark", systemImage: "speedometer") }
+                ExamplesView()
+                    .tabItem { Label("Predictions", systemImage: "text.viewfinder") }
+            }
         }
     }
 }

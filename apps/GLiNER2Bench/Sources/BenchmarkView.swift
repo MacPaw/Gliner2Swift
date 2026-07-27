@@ -163,42 +163,65 @@ private struct ReportCard: View {
 
             Divider()
 
-            // Scenario table
-            VStack(spacing: 0) {
-                headerRow
-                ForEach(report.scenarios) { s in
-                    scenarioRow(s)
-                    Divider()
-                }
+            // Per-scenario metrics. Each metric carries its unit, and every scenario says
+            // how many iterations it was measured over.
+            ForEach(report.scenarios) { scenario in
+                scenarioBlock(scenario)
             }
-            .font(.system(.footnote, design: .monospaced))
 
-            Text("\(report.device) · iOS \(report.osVersion) · \(report.processorCount) cores")
-                .font(.caption2).foregroundStyle(.secondary)
+            Text(deviceLine).font(.caption2).foregroundStyle(.secondary)
         }
         .padding()
         .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private var headerRow: some View {
-        row(name: "scenario", p50: "p50", toks: "tok/s", mb: "MB", bold: true)
+    private var deviceLine: String {
+        var parts = [report.deviceModel]
+        if let chip = report.chip { parts.append(chip) }
+        parts.append("iOS \(report.osVersion)")
+        parts.append("\(report.processorCount) cores")
+        return parts.joined(separator: " · ")
     }
 
-    private func scenarioRow(_ s: ScenarioResult) -> some View {
-        row(name: s.name,
-            p50: fmt(s.p50Ms), toks: fmt(s.tokensPerSecond, 0), mb: fmt(s.peakMemoryMB, 0),
-            bold: false)
-    }
-
-    private func row(name: String, p50: String, toks: String, mb: String, bold: Bool) -> some View {
-        HStack(spacing: 6) {
-            Text(name).frame(width: 110, alignment: .leading)
-            Text(p50).frame(maxWidth: .infinity, alignment: .trailing)
-            Text(toks).frame(maxWidth: .infinity, alignment: .trailing)
-            Text(mb).frame(maxWidth: .infinity, alignment: .trailing)
+    private func scenarioBlock(_ s: ScenarioResult) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(s.name).font(.subheadline).bold()
+                Spacer()
+                Text("\(s.iterations) iters").font(.caption2).foregroundStyle(.secondary)
+            }
+            Text(s.detail).font(.caption2).foregroundStyle(.secondary)
+            metricGrid([
+                ("p50", fmt(s.p50Ms), "ms"),
+                ("p90", fmt(s.p90Ms), "ms"),
+                ("mean", fmt(s.meanMs), "ms"),
+                ("min", fmt(s.minMs), "ms"),
+                ("max", fmt(s.maxMs), "ms"),
+                ("std", fmt(s.stdDevMs), "ms"),
+                ("per token", fmt(s.msPerToken, 2), "ms"),
+                ("throughput", fmt(s.tokensPerSecond, 0), "tok/s"),
+                ("peak mem", fmt(s.peakMemoryMB, 0), "MB"),
+            ])
         }
-        .fontWeight(bold ? .bold : .regular)
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    /// A grid of (label, value, unit) triples — value bold, unit dimmed, so the number
+    /// is never bare.
+    private func metricGrid(_ items: [(String, String, String)]) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: 3),
+                  spacing: 6) {
+            ForEach(items, id: \.0) { item in
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(item.0).font(.system(size: 10)).foregroundStyle(.secondary)
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text(item.1).font(.system(.footnote, design: .monospaced)).bold()
+                        Text(item.2).font(.system(size: 9)).foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
     }
 
     private func grid(_ items: [(String, String)]) -> some View {

@@ -24,10 +24,14 @@ import UIKit
 
 enum DeviceInfo {
 
-    /// Marketing-ish device string. On iOS this is the hardware identifier (e.g.
-    /// "iPhone16,2"); on macOS the host name.
-    static var model: String {
+    /// Hardware identifier, e.g. "iPhone14,3" on iOS, host name on macOS.
+    static var identifier: String {
         #if canImport(UIKit)
+        // On a real device `uname` gives the model id; the Simulator reports the Mac's
+        // arch, so read the simulated model from the environment there.
+        if let simulated = ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"] {
+            return simulated
+        }
         var systemInfo = utsname()
         uname(&systemInfo)
         let identifier = withUnsafeBytes(of: &systemInfo.machine) { raw -> String in
@@ -38,6 +42,51 @@ enum DeviceInfo {
         #else
         return ProcessInfo.processInfo.hostName
         #endif
+    }
+
+    /// Friendly device name, e.g. "iPhone 13 Pro Max", falling back to the raw identifier.
+    static var model: String {
+        marketingNames[identifier] ?? identifier
+    }
+
+    /// "iPhone 13 Pro Max (iPhone14,3)" — friendly name plus the raw id for the record.
+    static var modelLabel: String {
+        let id = identifier
+        guard let name = marketingNames[id] else { return id }
+        return "\(name) (\(id))"
+    }
+
+    private static let marketingNames: [String: String] = [
+        "iPhone12,1": "iPhone 11", "iPhone12,3": "iPhone 11 Pro", "iPhone12,5": "iPhone 11 Pro Max",
+        "iPhone12,8": "iPhone SE (2nd gen)",
+        "iPhone13,1": "iPhone 12 mini", "iPhone13,2": "iPhone 12",
+        "iPhone13,3": "iPhone 12 Pro", "iPhone13,4": "iPhone 12 Pro Max",
+        "iPhone14,4": "iPhone 13 mini", "iPhone14,5": "iPhone 13",
+        "iPhone14,2": "iPhone 13 Pro", "iPhone14,3": "iPhone 13 Pro Max",
+        "iPhone14,6": "iPhone SE (3rd gen)",
+        "iPhone14,7": "iPhone 14", "iPhone14,8": "iPhone 14 Plus",
+        "iPhone15,2": "iPhone 14 Pro", "iPhone15,3": "iPhone 14 Pro Max",
+        "iPhone15,4": "iPhone 15", "iPhone15,5": "iPhone 15 Plus",
+        "iPhone16,1": "iPhone 15 Pro", "iPhone16,2": "iPhone 15 Pro Max",
+        "iPhone17,3": "iPhone 16", "iPhone17,4": "iPhone 16 Plus",
+        "iPhone17,1": "iPhone 16 Pro", "iPhone17,2": "iPhone 16 Pro Max",
+        "iPhone17,5": "iPhone 16e",
+    ]
+
+    /// Chip family, inferred from the identifier where known (a nice extra line).
+    static var chip: String? {
+        switch identifier {
+        case "iPhone12,1", "iPhone12,3", "iPhone12,5", "iPhone12,8": return "A13 Bionic"
+        case "iPhone13,1", "iPhone13,2", "iPhone13,3", "iPhone13,4": return "A14 Bionic"
+        case "iPhone14,4", "iPhone14,5", "iPhone14,2", "iPhone14,3", "iPhone14,6": return "A15 Bionic"
+        case "iPhone14,7", "iPhone14,8": return "A15 Bionic"
+        case "iPhone15,2", "iPhone15,3": return "A16 Bionic"
+        case "iPhone15,4", "iPhone15,5": return "A16 Bionic"
+        case "iPhone16,1", "iPhone16,2": return "A17 Pro"
+        case "iPhone17,3", "iPhone17,4": return "A18"
+        case "iPhone17,1", "iPhone17,2": return "A18 Pro"
+        default: return nil
+        }
     }
 
     static var osVersion: String {
