@@ -71,6 +71,9 @@ enum DeviceInfo {
         "iPhone17,3": "iPhone 16", "iPhone17,4": "iPhone 16 Plus",
         "iPhone17,1": "iPhone 16 Pro", "iPhone17,2": "iPhone 16 Pro Max",
         "iPhone17,5": "iPhone 16e",
+        // iPhone 17 line (A19 / A19 Pro). iPhone18,2 confirmed = 17 Pro Max via device data.
+        "iPhone18,1": "iPhone 17 Pro", "iPhone18,2": "iPhone 17 Pro Max",
+        "iPhone18,3": "iPhone 17", "iPhone18,4": "iPhone Air",
     ]
 
     /// Chip family, inferred from the identifier where known (a nice extra line).
@@ -85,6 +88,8 @@ enum DeviceInfo {
         case "iPhone16,1", "iPhone16,2": return "A17 Pro"
         case "iPhone17,3", "iPhone17,4": return "A18"
         case "iPhone17,1", "iPhone17,2": return "A18 Pro"
+        case "iPhone18,3", "iPhone18,4": return "A19"
+        case "iPhone18,1", "iPhone18,2": return "A19 Pro"
         default: return nil
         }
     }
