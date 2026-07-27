@@ -121,12 +121,14 @@ public class Extractor: Module {
     /// - Parameters:
     ///   - inputIds: Token IDs [batch, seq_len]
     ///   - attentionMask: Optional attention mask [batch, seq_len]
+    ///   - outputHiddenStates: Whether to also return every intermediate layer's output
     /// - Returns: Encoder output with hidden states
     public func encode(
         _ inputIds: MLXArray,
-        attentionMask: MLXArray? = nil
+        attentionMask: MLXArray? = nil,
+        outputHiddenStates: Bool = false
     ) -> DeBERTaEncoderOutput {
-        encoder(inputIds, attentionMask: attentionMask)
+        encoder(inputIds, attentionMask: attentionMask, outputHiddenStates: outputHiddenStates)
     }
 
     // MARK: - Span Representation
@@ -139,43 +141,40 @@ public class Extractor: Module {
     /// - Returns: Dictionary with span_rep, spans_idx, and span_mask
     public func computeSpanRep(_ tokenEmbeddings: MLXArray, debug: Bool = false) -> SpanInfo {
         let textLength = tokenEmbeddings.dim(0)
+        let numSpans = textLength * maxWidth
 
-        // Build span indices: (start, end) for each position and width
-        var spansIdx: [(Int, Int)] = []
+        // Build the (start, end) index pair and the validity flag for every span in one
+        // CPU pass. The previous version wrote (-1, -1) for out-of-range spans and then
+        // recovered the same information on the GPU with two `equal`s, a `logicalOr` and a
+        // `where` against a float32 `zeros` — which also promoted the whole index tensor to
+        // float32 and made the gather float-indexed. Invalid entries get (0, 0) here, which
+        // is exactly what that `where` produced, so the gathered values are unchanged.
+        var flatSpans = [Int32](repeating: 0, count: numSpans * 2)
+        var invalid = [Bool](repeating: false, count: numSpans)
+
+        var span = 0
         for i in 0..<textLength {
             for j in 0..<maxWidth {
-                if i + j < textLength {
-                    spansIdx.append((i, i + j))
+                let end = i + j
+                if end < textLength {
+                    flatSpans[span * 2] = Int32(i)
+                    flatSpans[span * 2 + 1] = Int32(end)
                 } else {
-                    spansIdx.append((-1, -1))  // Invalid span
+                    invalid[span] = true   // indices stay (0, 0)
                 }
+                span += 1
             }
         }
 
-        // Convert to MLXArray [1, numSpans, 2]
-        let flatSpans = spansIdx.flatMap { [$0.0, $0.1] }
-        var spanIdxArray = MLXArray(flatSpans.map { Int32($0) })
-        spanIdxArray = spanIdxArray.reshaped([1, spansIdx.count, 2])
-
-        // Create span mask: true for invalid spans
-        let startInvalid = MLX.equal(spanIdxArray[0..., 0..., 0], MLXArray(Int32(-1)))
-        let endInvalid = MLX.equal(spanIdxArray[0..., 0..., 1], MLXArray(Int32(-1)))
-        let spanMask = MLX.logicalOr(startInvalid, endInvalid)
-
-        // Replace invalid indices with (0, 0) for safe indexing
-        let safeSpans = MLX.where(
-            spanMask.expandedDimensions(axis: -1),
-            MLXArray.zeros([1, spansIdx.count, 2]),
-            spanIdxArray
-        )
+        let spanIdxArray = MLXArray(flatSpans).reshaped([1, numSpans, 2])
+        let spanMask = MLXArray(invalid).reshaped([1, numSpans])
 
         // Compute span representations
         let tokenEmbsBatched = tokenEmbeddings.expandedDimensions(axis: 0)  // [1, textLen, hidden]
-        var spanRepResult = spanRep(tokenEmbsBatched, spanIdx: safeSpans, debug: debug)  // [1, textLen, maxWidth, hidden]
+        var spanRepResult = spanRep(tokenEmbsBatched, spanIdx: spanIdxArray, debug: debug)  // [1, textLen, maxWidth, hidden]
         spanRepResult = spanRepResult.squeezed(axis: 0)  // [textLen, maxWidth, hidden]
 
         // Reshape to [numSpans, hidden]
-        let numSpans = textLength * maxWidth
         spanRepResult = spanRepResult.reshaped([numSpans, hiddenSize])
 
         return SpanInfo(
@@ -229,7 +228,8 @@ public struct SpanInfo {
     /// Span representations [numSpans, hidden]
     public let spanRep: MLXArray
 
-    /// Span indices [1, numSpans, 2]
+    /// Span indices [1, numSpans, 2], int32 and gather-safe: spans that run past the end of
+    /// the text are collapsed to (0, 0) and flagged in `spanMask` rather than held as (-1, -1).
     public let spansIdx: MLXArray
 
     /// Span mask [1, numSpans] - true for invalid spans

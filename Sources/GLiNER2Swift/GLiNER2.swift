@@ -406,7 +406,7 @@ public class GLiNER2 {
             let originalSchemas = batch.originalSchemas[sampleIdx]
 
             // Find text tokens position
-            let textStartIdx = findTextStartIndex(mapping: mappedIndices)
+            let textStartIdx = batch.textStartIndices[sampleIdx]
             let seqLen = mappedIndices.count
 
             // Get text token embeddings (subword level)
@@ -416,7 +416,8 @@ public class GLiNER2 {
             // This aggregates subwords belonging to the same whitespace-split word
             let pooledEmbeddings = poolTextEmbeddings(
                 subwordEmbeddings: subwordEmbeddings,
-                mappedIndices: Array(mappedIndices[textStartIdx...]),
+                wordFirstIndices: batch.wordFirstIndices[sampleIdx],
+                wordSubwordCounts: batch.wordSubwordCounts[sampleIdx],
                 poolingType: processor.tokenPooling
             )
             // Pooled positions cover the classification prefix AND the real text words:
@@ -434,17 +435,10 @@ public class GLiNER2 {
                 ? Array(allTextTokens.prefix(prefixLen))
                 : []
 
-            // Extract schema embeddings per-schema (grouped by schema_idx in mapping)
-            // Only special tokens ([P], [C], [E], [R], [L]) contribute embeddings
-            // Get input IDs for this sample (needed for token string lookup)
-            let sampleInputIds = batch.getInputIds(for: sampleIdx)
-
-            let schemaEmbsList = extractSchemaEmbeddingsPerSchema(
-                hiddenStates: sampleHidden,
-                mappedIndices: mappedIndices,
-                schemaTokensList: schemaTokensList,
-                inputIds: sampleInputIds
-            )
+            // Positions of the marker tokens ([P], [C], [E], [R], [L]) that contribute
+            // embeddings, grouped per schema. Recorded during tokenization (Phase 3.5), so
+            // no per-position vocabulary lookup happens here any more.
+            let markerPositions = batch.schemaMarkerPositions[sampleIdx]
 
             // Compute span info if we have any span tasks
             let hasSpanTask = taskTypes.contains { $0 != "classifications" }
@@ -470,21 +464,55 @@ public class GLiNER2 {
                 }
             }
 
+            // Build every schema's marker gather up front, and with it the count-prediction
+            // argmax for the span tasks, then force the whole set with one barrier. Each
+            // schema's countPred graph is left exactly as it was — stacking them into a
+            // single matmul would change the accumulation order and could flip a near-tie
+            // count — so this batches only the synchronization. `item()` on an already
+            // evaluated array is a copy, so the decode loop below no longer blocks per
+            // schema.
+            let schemaCount = schemaTokensList.count
+            var schemaEmbeddings = [MLXArray?](repeating: nil, count: schemaCount)
+            var countArgmax = [MLXArray?](repeating: nil, count: schemaCount)
+            var pendingCounts: [MLXArray] = []
+
+            for schemaIdx in 0..<schemaCount {
+                guard schemaTokensList[schemaIdx].count >= 4,
+                      schemaIdx < markerPositions.count,
+                      !markerPositions[schemaIdx].isEmpty,
+                      schemaIdx < taskTypes.count else { continue }
+
+                // Gather this schema's marker embeddings in one kernel, replacing a
+                // per-marker row slice plus a stack.
+                let embs = MLX.take(  // [numTokens, hidden]
+                    sampleHidden,
+                    MLXArray(markerPositions[schemaIdx].map { Int32($0) }),
+                    axis: 0
+                )
+                schemaEmbeddings[schemaIdx] = embs
+
+                if taskTypes[schemaIdx] != "classifications", spanInfo != nil {
+                    let countLogits = model.countPred(embs[0].expandedDimensions(axis: 0))
+                    let argmax = MLX.argMax(countLogits.squeezed(axis: 0))
+                    countArgmax[schemaIdx] = argmax
+                    pendingCounts.append(argmax)
+                }
+            }
+
+            if !pendingCounts.isEmpty {
+                MLX.eval(pendingCounts)
+            }
+
             // Process each schema separately (like Python does)
             var sampleResult: [String: Any] = [:]
 
             for (schemaIdx, schemaTokens) in schemaTokensList.enumerated() {
-                guard schemaTokens.count >= 4 else { continue }
-                guard schemaIdx < schemaEmbsList.count, !schemaEmbsList[schemaIdx].isEmpty else { continue }
-                guard schemaIdx < taskTypes.count else { continue }
+                guard let embs = schemaEmbeddings[schemaIdx] else { continue }
 
                 let taskType = taskTypes[schemaIdx]
 
                 // Get schema name (token at index 2, before [DESCRIPTION] if present)
                 let schemaName = schemaTokens[2].components(separatedBy: " [DESCRIPTION] ")[0]
-
-                // Stack schema embeddings for this schema
-                let embs = MLX.stacked(schemaEmbsList[schemaIdx], axis: 0)  // [numTokens, hidden]
 
                 if taskType == "classifications" {
                     // Classification task - use classifier MLP
@@ -498,13 +526,15 @@ public class GLiNER2 {
                     )
                 } else {
                     // Span-based task (entities, json_structures, relations)
-                    guard let info = spanInfo else { continue }
+                    guard let info = spanInfo,
+                          let predCountArray = countArgmax[schemaIdx] else { continue }
 
                     extractSpanResult(
                         results: &sampleResult,
                         schemaName: schemaName,
                         taskType: taskType,
                         embs: embs,
+                        predCount: Int(predCountArray.item(Int32.self)),
                         spanInfo: info,
                         schemaTokens: schemaTokens,
                         textLen: textLen,
@@ -528,158 +558,72 @@ public class GLiNER2 {
         return results
     }
 
-    /// Find the index where text tokens start in the mapping
-    private func findTextStartIndex(mapping: [MappedIndex]) -> Int {
-        for (idx, map) in mapping.enumerated() {
-            if map.segmentType == .text {
-                return idx
-            }
-        }
-        return mapping.count
-    }
-
-    /// Extract schema embeddings (only special tokens that contribute)
-    private func extractSchemaEmbeddings(
-        hiddenStates: MLXArray,
-        mappedIndices: [MappedIndex]
-    ) -> MLXArray {
-        var schemaEmbList: [MLXArray] = []
-
-        for (idx, mapping) in mappedIndices.enumerated() {
-            if mapping.segmentType == .schema {
-                // Only extract [P], [C], [E], [R], [L] token embeddings
-                schemaEmbList.append(hiddenStates[idx].expandedDimensions(axis: 0))
-            }
-        }
-
-        guard !schemaEmbList.isEmpty else {
-            return MLXArray.zeros([0, config.hiddenSize])
-        }
-
-        return MLX.concatenated(schemaEmbList, axis: 0)
-    }
-
-    /// Special marker tokens that contribute embeddings
-    private static let specialMarkerTokens: Set<String> = ["[P]", "[C]", "[E]", "[R]", "[L]"]
-
-    /// Extract schema embeddings grouped by schema index.
-    /// Returns a list of embedding arrays, one per schema.
-    /// Only special tokens ([P], [C], [E], [R], [L]) contribute embeddings.
-    ///
-    /// This matches Python's approach in processor.py:1018-1025:
-    /// ```python
-    /// for j, tid in enumerate(ids):
-    ///     seg_type, orig_idx, schema_idx = mappings[j]
-    ///     emb = embs[j]
-    ///     if seg_type == "schema":
-    ///         tok = self.tokenizer.convert_ids_to_tokens(tid)
-    ///         if tok in special_set:
-    ///             schema_embs[schema_idx].append(emb)
-    /// ```
-    private func extractSchemaEmbeddingsPerSchema(
-        hiddenStates: MLXArray,
-        mappedIndices: [MappedIndex],
-        schemaTokensList: [[String]],
-        inputIds: [Int]
-    ) -> [[MLXArray]] {
-        let numSchemas = schemaTokensList.count
-        var schemaEmbs: [[MLXArray]] = Array(repeating: [], count: numSchemas)
-
-        // Match Python: iterate through all positions and check actual token string
-        for (idx, mapping) in mappedIndices.enumerated() {
-            guard mapping.segmentType == .schema else { continue }
-
-            let schemaIdx = mapping.schemaIndex
-            guard schemaIdx >= 0 && schemaIdx < numSchemas else { continue }
-            guard idx < inputIds.count else { continue }
-
-            // Get actual token string (matching Python's convert_ids_to_tokens)
-            let tokenId = inputIds[idx]
-            if let tokenStr = processor.tokenizer.idToToken(tokenId),
-               Self.specialMarkerTokens.contains(tokenStr) {
-                schemaEmbs[schemaIdx].append(hiddenStates[idx])
-            }
-        }
-
-        return schemaEmbs
-    }
-
-    /// Get argmax of a 1D array
-    private func argmax(_ arr: MLXArray) -> Int {
-        // `.item()` already forces a single eval barrier; the extra explicit
-        // eval() calls were redundant GPU->CPU flushes.
-        Int(MLX.argMax(arr).item(Int32.self))
-    }
-
     /// Pool subword embeddings to word-level embeddings.
     ///
     /// This aggregates subword embeddings belonging to the same whitespace-split word.
     /// Matches Python: processor.py:_aggregate() and extract_embeddings_from_batch()
     ///
+    /// The word boundaries arrive precomputed from tokenization (Phase 3.5): each word owns
+    /// a contiguous run of subwords, so `first ..< first + count` describes it completely.
+    /// That turns what used to be one lazy row slice per subword plus a stack per word —
+    /// hundreds of kernel launches on a long document — into a single gather.
+    ///
     /// - Parameters:
     ///   - subwordEmbeddings: Subword token embeddings [num_subwords, hidden]
-    ///   - mappedIndices: Mapping info for each subword (must be text segment only)
+    ///   - wordFirstIndices: Index of each word's first subword
+    ///   - wordSubwordCounts: Number of subwords in each word
     ///   - poolingType: How to aggregate subwords ("first", "mean", or "max")
     /// - Returns: Word-level embeddings [num_words, hidden]
-    private func poolTextEmbeddings(
+    func poolTextEmbeddings(   // internal, not private: covered directly by GatherIndexTests
         subwordEmbeddings: MLXArray,
-        mappedIndices: [MappedIndex],
+        wordFirstIndices: [Int],
+        wordSubwordCounts: [Int],
         poolingType: TokenPoolingType
     ) -> MLXArray {
-        guard subwordEmbeddings.dim(0) > 0 else {
-            return subwordEmbeddings
-        }
-
-        var wordEmbeddings: [MLXArray] = []
-        var bucket: [MLXArray] = []
-        var lastOrigIdx: Int? = nil
-
-        for (i, mapping) in mappedIndices.enumerated() {
-            guard mapping.segmentType == .text else { continue }
-
-            let emb = subwordEmbeddings[i]
-            let origIdx = mapping.originalIndex
-
-            // When we see a new word (different origIdx), aggregate the previous bucket
-            if let last = lastOrigIdx, origIdx != last, !bucket.isEmpty {
-                wordEmbeddings.append(aggregateEmbeddings(bucket, poolingType: poolingType))
-                bucket = []
-            }
-
-            bucket.append(emb)
-            lastOrigIdx = origIdx
-        }
-
-        // Don't forget the last bucket
-        if !bucket.isEmpty {
-            wordEmbeddings.append(aggregateEmbeddings(bucket, poolingType: poolingType))
-        }
-
-        guard !wordEmbeddings.isEmpty else {
+        guard subwordEmbeddings.dim(0) > 0, !wordFirstIndices.isEmpty else {
             return MLXArray.zeros([0, config.hiddenSize])
         }
 
-        return MLX.stacked(wordEmbeddings, axis: 0)
-    }
-
-    /// Aggregate multiple embeddings using the specified pooling strategy.
-    ///
-    /// Matches Python: processor.py:_aggregate()
-    private func aggregateEmbeddings(_ embeddings: [MLXArray], poolingType: TokenPoolingType) -> MLXArray {
-        guard !embeddings.isEmpty else {
-            fatalError("Cannot aggregate empty embeddings")
+        if poolingType == .first {
+            return MLX.take(subwordEmbeddings, MLXArray(wordFirstIndices.map { Int32($0) }), axis: 0)
         }
 
-        switch poolingType {
-        case .first:
-            return embeddings[0]
-        case .mean:
-            let stacked = MLX.stacked(embeddings, axis: 0)
-            return MLX.mean(stacked, axis: 0)
-        case .max:
-            let stacked = MLX.stacked(embeddings, axis: 0)
-            return MLX.max(stacked, axis: 0)
+        // Gather every word's subwords into a rectangular [words, maxSubwords, hidden]
+        // block. Short words repeat their last subword: harmless for `max` (idempotent)
+        // and masked back out for `mean`.
+        let wordCount = wordFirstIndices.count
+        let maxSubwords = wordSubwordCounts.max() ?? 1
+
+        var gatherIndices = [Int32](repeating: 0, count: wordCount * maxSubwords)
+        for w in 0..<wordCount {
+            let first = wordFirstIndices[w]
+            let last = wordSubwordCounts[w] - 1
+            for k in 0..<maxSubwords {
+                gatherIndices[w * maxSubwords + k] = Int32(first + min(k, last))
+            }
         }
+
+        let gathered = MLX.take(subwordEmbeddings, MLXArray(gatherIndices), axis: 0)
+            .reshaped([wordCount, maxSubwords, config.hiddenSize])
+
+        if poolingType == .max {
+            return MLX.max(gathered, axis: 1)
+        }
+
+        var maskValues = [Float](repeating: 0, count: wordCount * maxSubwords)
+        for w in 0..<wordCount {
+            for k in 0..<wordSubwordCounts[w] {
+                maskValues[w * maxSubwords + k] = 1
+            }
+        }
+        let mask = MLXArray(maskValues)
+            .reshaped([wordCount, maxSubwords, 1])
+            .asType(gathered.dtype)
+        let counts = MLXArray(wordSubwordCounts.map { Float($0) })
+            .reshaped([wordCount, 1])
+            .asType(gathered.dtype)
+
+        return MLX.sum(gathered * mask, axis: 1) / counts
     }
 
     // MARK: - Classification Extraction
@@ -792,6 +736,7 @@ public class GLiNER2 {
         schemaName: String,
         taskType: String,
         embs: MLXArray,
+        predCount: Int,
         spanInfo: SpanInfo,
         schemaTokens: [String],
         textLen: Int,
@@ -825,10 +770,8 @@ public class GLiNER2 {
             return
         }
 
-        // Predict count using [P] token (first embedding)
-        let countLogits = model.countPred(embs[0].expandedDimensions(axis: 0))
-        let predCount = argmax(countLogits.squeezed(axis: 0))
-
+        // `predCount` was computed from this schema's [P] embedding by the caller, which
+        // evaluates every schema's count argmax in one barrier (Phase 2.2).
         if predCount <= 0 {
             if taskType == "entities" {
                 results[schemaName] = [:] as [String: Any]
@@ -856,9 +799,12 @@ public class GLiNER2 {
         let spanRepReshaped = spanInfo.spanRep.reshaped([L, config.maxWidth, config.hiddenSize])
 
         // Einsum: scores[b,p,l,k] = sum_d(spanRep[l,k,d] * structProj[b,p,d])
-        var spanScores = MLX.einsum("lkd,cpd->cplk", spanRepReshaped, structProj)
-        spanScores = MLX.sigmoid(spanScores)  // [count, fields, L, maxWidth]
-        MLX.eval(spanScores)
+        var scoreArray = MLX.einsum("lkd,cpd->cplk", spanRepReshaped, structProj)
+        scoreArray = MLX.sigmoid(scoreArray)  // [count, fields, L, maxWidth]
+
+        // One readback for the whole schema. `asArray` evaluates, so this also subsumes
+        // the explicit eval that used to sit here (Phase 2.1).
+        let spanScores = SpanScoreBuffer(scoreArray)
 
         // Extract based on task type
         if taskType == "entities" {
@@ -923,7 +869,7 @@ public class GLiNER2 {
         results: inout [String: Any],
         schemaName: String,
         fieldNames: [String],
-        spanScores: MLXArray,
+        spanScores: SpanScoreBuffer,
         textLen: Int,
         originalText: String,
         startMappings: [Int],
@@ -935,22 +881,20 @@ public class GLiNER2 {
         includeSpans: Bool
     ) {
         // For entities, use scores[0, :, -textLen:] (first count slot, all fields, text portion)
-        let totalLen = spanScores.dim(2)
-        let startIdx = totalLen - textLen
-        let scores = spanScores[0]  // [fields, L, maxWidth]
+        let startIdx = spanScores.rows - textLen
 
         var entityResults: [String: [Any]] = [:]
 
         for (fieldIdx, entityName) in fieldNames.enumerated() {
-            guard fieldIdx < scores.dim(0) else { continue }
-
-            // Get scores for this field's text spans
-            let fieldScores = scores[fieldIdx, startIdx...]  // [textLen, maxWidth]
+            guard fieldIdx < spanScores.fields else { continue }
 
             let fieldThreshold = metadata.entityMetadata[entityName]?.threshold ?? threshold
 
             let spans = decoder.findSpans(
-                scores: fieldScores,
+                scores: spanScores,
+                instance: 0,
+                field: fieldIdx,
+                rowOffset: startIdx,
                 threshold: fieldThreshold,
                 textLen: textLen,
                 text: originalText,
@@ -1011,7 +955,7 @@ public class GLiNER2 {
         results: inout [String: Any],
         schemaName: String,
         fieldNames: [String],
-        spanScores: MLXArray,
+        spanScores: SpanScoreBuffer,
         predCount: Int,
         textLen: Int,
         originalText: String,
@@ -1023,27 +967,25 @@ public class GLiNER2 {
         includeConfidence: Bool,
         includeSpans: Bool
     ) {
-        let totalLen = spanScores.dim(2)
-        let startIdx = totalLen - textLen
+        let startIdx = spanScores.rows - textLen
 
         var instances: [Any] = []
 
         // Process each count instance
         for inst in 0..<predCount {
-            let instScores = spanScores[inst]  // [fields, L, maxWidth]
-
             var fieldData: [(String?, Float, Int, Int)?] = []
 
             for (fieldIdx, _) in fieldNames.enumerated() {
-                guard fieldIdx < instScores.dim(0) else {
+                guard fieldIdx < spanScores.fields else {
                     fieldData.append(nil)
                     continue
                 }
 
-                let fieldScores = instScores[fieldIdx, startIdx...]  // [textLen, maxWidth]
-
                 let spans = decoder.findSpans(
-                    scores: fieldScores,
+                    scores: spanScores,
+                    instance: inst,
+                    field: fieldIdx,
+                    rowOffset: startIdx,
                     threshold: threshold,
                     textLen: textLen,
                     text: originalText,
@@ -1099,7 +1041,7 @@ public class GLiNER2 {
         results: inout [String: Any],
         schemaName: String,
         fieldNames: [String],
-        spanScores: MLXArray,
+        spanScores: SpanScoreBuffer,
         predCount: Int,
         textLen: Int,
         originalText: String,
@@ -1113,18 +1055,15 @@ public class GLiNER2 {
         includeConfidence: Bool,
         includeSpans: Bool
     ) {
-        let totalLen = spanScores.dim(2)
-        let startIdx = totalLen - textLen
+        let startIdx = spanScores.rows - textLen
 
         var instances: [[String: Any]] = []
 
         for inst in 0..<predCount {
-            let instScores = spanScores[inst]  // [fields, L, maxWidth]
-
             var instance: [String: Any] = [:]
 
             for (fieldIdx, fieldName) in fieldNames.enumerated() {
-                guard fieldIdx < instScores.dim(0) else { continue }
+                guard fieldIdx < spanScores.fields else { continue }
 
                 let fieldKey = "\(schemaName).\(fieldName)"
                 let fieldMeta = metadata.fieldMetadata[fieldKey]
@@ -1137,20 +1076,17 @@ public class GLiNER2 {
                     // which occupies the positions before the real text words. Matches
                     // Python: prefix_scores = span_scores[inst, fidx, :-text_len] and
                     // _find_choice_idx(choice, text_tokens[:-text_len]).
-                    let result: Any?
-                    if startIdx > 0 {
-                        let prefixScores = instScores[fieldIdx, 0..<startIdx]  // [prefixLen, maxWidth]
-                        result = decoder.decodeChoiceField(
-                            prefixScores: prefixScores,
-                            choices: choices,
-                            textTokens: prefixTokens,
-                            threshold: fieldThreshold,
-                            dtype: dtype,
-                            includeConfidence: includeConfidence
-                        )
-                    } else {
-                        result = nil
-                    }
+                    let result = decoder.decodeChoiceField(
+                        scores: spanScores,
+                        instance: inst,
+                        field: fieldIdx,
+                        prefixLength: startIdx,
+                        choices: choices,
+                        textTokens: prefixTokens,
+                        threshold: fieldThreshold,
+                        dtype: dtype,
+                        includeConfidence: includeConfidence
+                    )
 
                     // Python keeps the key with a null/empty value rather than dropping
                     // it (engine.py:660); the instance-level content gate below decides
@@ -1158,10 +1094,11 @@ public class GLiNER2 {
                     instance[fieldName] = result ?? NSNull()
                 } else {
                     // Regular span field: use text scores
-                    let fieldScores = instScores[fieldIdx, startIdx...]  // [textLen, maxWidth]
-
                     var spans = decoder.findSpans(
-                        scores: fieldScores,
+                        scores: spanScores,
+                        instance: inst,
+                        field: fieldIdx,
+                        rowOffset: startIdx,
                         threshold: fieldThreshold,
                         textLen: textLen,
                         text: originalText,

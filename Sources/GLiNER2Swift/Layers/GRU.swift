@@ -110,12 +110,42 @@ public class GRU: Module {
             h = MLXArray.zeros([batch, hiddenSize])
         }
 
-        var outputs: [MLXArray] = []
+        // Hoist the weight transposes out of the recurrence, and project EVERY timestep's
+        // input in one matmul. The input side has no dependence on the hidden state, so
+        // the per-step version was issuing seqLen times more, and far smaller, matmuls
+        // than necessary — this loop is dispatch-bound, not FLOP-bound (batch is the
+        // number of schema fields, typically 1-10).
+        let wIHTransposed = weightIH.transposed()   // [input_size, 3 * hidden]
+        let wHHTransposed = weightHH.transposed()   // [hidden, 3 * hidden]
 
-        // Process each timestep
+        let inputSize = input.dim(2)
+        let gatesInput = (MLX.matmul(input.reshaped([seqLen * batch, inputSize]), wIHTransposed)
+                          + biasIH)
+            .reshaped([seqLen, batch, 3 * hiddenSize])
+
+        var outputs: [MLXArray] = []
+        outputs.reserveCapacity(seqLen)
+
+        // Process each timestep: one hidden-side matmul plus elementwise gates.
+        //
+        // PyTorch GRU equations (unchanged):
+        //   r = sigmoid(gi_r + gh_r)
+        //   z = sigmoid(gi_z + gh_z)
+        //   n = tanh(gi_n + r * gh_n)
+        //   h' = (1 - z) * n + z * h
+        // where gi_* already carry b_i* and gh_* already carry b_h*.
         for t in 0..<seqLen {
-            let x = input[t]  // [batch, input_size]
-            h = gruCell(x: x, h: h)
+            let gi = gatesInput[t]                                // [batch, 3 * hidden]
+            let gh = MLX.matmul(h, wHHTransposed) + biasHH        // [batch, 3 * hidden]
+
+            let giParts = MLX.split(gi, parts: 3, axis: -1)
+            let ghParts = MLX.split(gh, parts: 3, axis: -1)
+
+            let r = MLX.sigmoid(giParts[0] + ghParts[0])
+            let z = MLX.sigmoid(giParts[1] + ghParts[1])
+            let n = MLX.tanh(giParts[2] + r * ghParts[2])
+
+            h = (1 - z) * n + z * h
             outputs.append(h.expandedDimensions(axis: 0))
         }
 

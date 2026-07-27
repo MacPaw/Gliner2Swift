@@ -77,6 +77,13 @@ public class SchemaTransformer {
     /// Whether in training mode
     public var isTraining: Bool = false
 
+    /// Token ids that stand for a marker token contributing a schema embedding.
+    ///
+    /// Resolved through the tokenizer rather than assumed, and filtered back through
+    /// `idToToken` so an id only counts when it really round-trips to the marker — the
+    /// same test the decode path used to run at every position.
+    private let markerTokenIds: Set<Int>
+
     /// Initialize from local directory containing tokenizer.json
     ///
     /// - Parameters:
@@ -97,6 +104,14 @@ public class SchemaTransformer {
         self.tokenizer = tokenizer
         self.wordSplitter = WhitespaceTokenSplitter()
         self.tokenPooling = tokenPooling
+
+        var markerIds: Set<Int> = []
+        for marker in SpecialTokens.embeddingTokens {
+            guard let id = tokenizer.tokensToIds([marker]).first,
+                  tokenizer.idToToken(id) == marker else { continue }
+            markerIds.insert(id)
+        }
+        self.markerTokenIds = markerIds
     }
 
     // MARK: - Main Transformation
@@ -136,14 +151,14 @@ public class SchemaTransformer {
 
         // Format input with mappings
         let schemaTokensList = schemaResults.map { $0.schemaTokens }
-        let (inputIds, mappedIndices) = formatInputWithMapping(
+        let formatted = formatInputWithMapping(
             schemaTokensList: schemaTokensList,
             textTokens: allTextTokens
         )
 
         return TransformedRecord(
-            inputIds: inputIds,
-            mappedIndices: mappedIndices,
+            inputIds: formatted.inputIds,
+            mappedIndices: formatted.mappedIndices,
             schemaTokensList: schemaTokensList,
             textTokens: allTextTokens,
             structureLabels: schemaResults.map { $0.output as Any },
@@ -151,7 +166,11 @@ public class SchemaTransformer {
             startTokenIdx: textTokens.starts,
             endTokenIdx: textTokens.ends,
             text: normalizedText,
-            schema: schema  // Original schema before modification
+            schema: schema,  // Original schema before modification
+            textStartIndex: formatted.textStartIndex,
+            wordFirstIndices: formatted.wordFirstIndices,
+            wordSubwordCounts: formatted.wordSubwordCounts,
+            schemaMarkerPositions: formatted.schemaMarkerPositions
         )
     }
 
@@ -447,16 +466,30 @@ public class SchemaTransformer {
 
     // MARK: - Input Formatting
 
+    /// Everything `formatInputWithMapping` derives in its single pass over the prompt.
+    private struct FormattedInput {
+        let inputIds: [Int]
+        let mappedIndices: [MappedIndex]
+        let textStartIndex: Int
+        let wordFirstIndices: [Int]
+        let wordSubwordCounts: [Int]
+        let schemaMarkerPositions: [[Int]]
+    }
+
     /// Format input and create token mappings
+    ///
+    /// Also records, in the same pass, the index arrays the decode path needs to gather
+    /// word-level and schema-level embeddings without inspecting individual token ids
+    /// again: where the text segment starts, which subword opens each word (and how many
+    /// subwords it spans), and where each schema's marker tokens landed.
     ///
     /// - Parameters:
     ///   - schemaTokensList: List of schema token lists
     ///   - textTokens: Text tokens
-    /// - Returns: (input_ids, mapped_indices)
     private func formatInputWithMapping(
         schemaTokensList: [[String]],
         textTokens: [String]
-    ) -> ([Int], [MappedIndex]) {
+    ) -> FormattedInput {
         // Build combined tokens
         var combined: [String] = []
         for schemaTokens in schemaTokensList {
@@ -479,6 +512,12 @@ public class SchemaTransformer {
         var currentSchema = 0
         var foundSep = false
 
+        var textStartIndex = -1
+        var wordFirstIndices: [Int] = []
+        var wordSubwordCounts: [Int] = []
+        var schemaMarkerPositions: [[Int]] = Array(repeating: [], count: numSchemas)
+        let markerIds = markerTokenIds
+
         for (origIdx, token) in combined.enumerated() {
             let segType: SegmentType
             let schemaIdx: Int
@@ -500,15 +539,44 @@ public class SchemaTransformer {
 
             // Tokenize token into subword IDs directly
             let subTokenIds = tokenize(token)
+            let tokenStart = inputIds.count
             inputIds.append(contentsOf: subTokenIds)
 
             // Map each subword to original token
             for _ in subTokenIds {
                 mappings.append(MappedIndex(segType, origIdx, schemaIdx))
             }
+
+            switch segType {
+            case .schema:
+                if schemaIdx >= 0 && schemaIdx < numSchemas {
+                    for (offset, id) in subTokenIds.enumerated() where markerIds.contains(id) {
+                        schemaMarkerPositions[schemaIdx].append(tokenStart + offset)
+                    }
+                }
+            case .text:
+                if textStartIndex < 0 {
+                    textStartIndex = tokenStart
+                }
+                // A word that produced no subword contributes no pooled position, which is
+                // what the per-subword loop this replaces also did.
+                if !subTokenIds.isEmpty {
+                    wordFirstIndices.append(tokenStart - textStartIndex)
+                    wordSubwordCounts.append(subTokenIds.count)
+                }
+            case .sep:
+                break
+            }
         }
 
-        return (inputIds, mappings)
+        return FormattedInput(
+            inputIds: inputIds,
+            mappedIndices: mappings,
+            textStartIndex: textStartIndex < 0 ? mappings.count : textStartIndex,
+            wordFirstIndices: wordFirstIndices,
+            wordSubwordCounts: wordSubwordCounts,
+            schemaMarkerPositions: schemaMarkerPositions
+        )
     }
 
     /// Tokenize a single token into subword IDs
@@ -576,7 +644,12 @@ public class SchemaTransformer {
             startMappings: records.map { $0.startTokenIdx },
             endMappings: records.map { $0.endTokenIdx },
             originalTexts: records.map { $0.text },
-            originalSchemas: records.map { $0.schema }
+            originalSchemas: records.map { $0.schema },
+            inputIdsCPU: records.map { $0.inputIds },
+            textStartIndices: records.map { $0.textStartIndex },
+            wordFirstIndices: records.map { $0.wordFirstIndices },
+            wordSubwordCounts: records.map { $0.wordSubwordCounts },
+            schemaMarkerPositions: records.map { $0.schemaMarkerPositions }
         )
     }
 }

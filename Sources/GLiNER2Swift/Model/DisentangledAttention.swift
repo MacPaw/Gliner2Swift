@@ -129,7 +129,46 @@ public func makeLogBucketPosition(
 ///
 /// CRITICAL: Uses share_att_key=true, meaning query_proj and key_proj are reused
 /// for both content and position embeddings (no separate pos_key_proj/pos_query_proj).
+/// Holder for derived tensors that must NOT be visible to `Module` reflection.
+///
+/// Any stored `MLXArray` property on a `Module` — even a private one — is captured as a
+/// parameter when the module's reflection cache is built at init, which would put these
+/// derived values into `parameters()` and `update(parameters:)`. A plain (non-Module,
+/// non-MLXArray) class is classified as `.other` and ignored entirely, so it is the safe
+/// place to memoize.
+final class DisentangledAttentionCache {
+    /// `keyProj(relEmbeddings)` reshaped to [heads, buckets, headDim].
+    var posKey: MLXArray?
+    /// `queryProj(relEmbeddings)` reshaped to [heads, buckets, headDim].
+    var posQuery: MLXArray?
+    /// Log-bucket relative-position matrix, keyed by the sequence length it was built for.
+    var relPos: (seqLen: Int, value: MLXArray)?
+
+    func reset() {
+        posKey = nil
+        posQuery = nil
+        relPos = nil
+    }
+}
+
 public class DisentangledSelfAttention: Module {
+
+    /// Memoized projections of the (frozen) relative-position embedding table.
+    ///
+    /// At inference the table and the projection weights are constant, so
+    /// `keyProj(relEmbeddings)` and `queryProj(relEmbeddings)` — a [512,768]x[768,768]
+    /// matmul each — produce byte-identical results on every call of every layer. Twelve
+    /// layers x two projections is ~14.5 GFLOP of pure repetition per inference,
+    /// independent of input length.
+    ///
+    /// Invalidated by `resetCaches()`, which weight loading must call.
+    let cache = DisentangledAttentionCache()
+
+    /// Discard memoized projections. Call after any weight mutation.
+    public func resetCaches() {
+        cache.reset()
+    }
+
     /// Hidden size
     public let hiddenSize: Int
 
@@ -232,36 +271,40 @@ public class DisentangledSelfAttention: Module {
         let key = reshapeForHeads(keyLayer, batchSize: batchSize, seqLen: seqLen)
         let value = reshapeForHeads(valueLayer, batchSize: batchSize, seqLen: seqLen)
 
-        // Compute position bucket indices
-        let relPos = makeLogBucketPosition(
-            seqLen: seqLen,
-            positionBuckets: positionBuckets,
-            maxPosition: maxPosition
-        )
+        // Position bucket indices depend only on seqLen and fixed config, so memoize by
+        // length: the matrix is otherwise rebuilt from ~15 small kernels on every layer of
+        // every call.
+        let relPos: MLXArray
+        if let cached = cache.relPos, cached.seqLen == seqLen {
+            relPos = cached.value
+        } else {
+            relPos = makeLogBucketPosition(
+                seqLen: seqLen,
+                positionBuckets: positionBuckets,
+                maxPosition: maxPosition
+            )
+            MLX.eval(relPos)
+            cache.relPos = (seqLen, relPos)
+        }
 
-        // CRITICAL: DeBERTa scales each attention component SEPARATELY!
-        // - c2c: key is divided by scale BEFORE matmul
-        // - c2p: divided by scale AFTER computation
-        // - p2c: divided by scale AFTER computation
-        // This is NOT the same as dividing the combined scores at the end!
-
-        // Content-to-content attention (standard)
-        // Python: attention_scores = torch.bmm(query_layer, key_layer.transpose(-1, -2) / scale)
-        // Note: key is divided by scale BEFORE matmul
-        let scaledKey = key / scaleFactor
-        var attentionScores = MLX.matmul(query, scaledKey.transposed(0, 1, 3, 2))
+        // DeBERTa's three components all carry the same 1/scaleFactor: Python divides the
+        // key before the c2c matmul and divides the c2p and p2c scores after computing
+        // them. That makes the whole pre-softmax expression
+        //     (q·kᵀ + c2p + p2c) / scaleFactor + attentionMask,
+        // which is exactly SDPA's `scale` plus an additive mask — so the position terms go
+        // in as the bias and the fused kernel does the rest. Regrouping the divisions is a
+        // floating-point reassociation, not a change of formula.
+        var positionBias: MLXArray? = nil
 
         // Content-to-position attention
         if posAttType.contains("c2p") {
-            let c2pScores = computeC2P(
+            positionBias = computeC2P(
                 query: query,
                 relEmbeddings: relEmbeddings,
                 relPos: relPos,
                 batchSize: batchSize,
                 seqLen: seqLen
             )
-            // Python: score += c2p_att / scale
-            attentionScores = attentionScores + (c2pScores / scaleFactor)
         }
 
         // Position-to-content attention
@@ -273,25 +316,28 @@ public class DisentangledSelfAttention: Module {
                 batchSize: batchSize,
                 seqLen: seqLen
             )
-            // Python: score += p2c_att / scale
-            attentionScores = attentionScores + (p2cScores / scaleFactor)
+            positionBias = positionBias.map { $0 + p2cScores } ?? p2cScores
         }
 
-        // NOTE: Scaling is now applied to each component separately above
-
-        // Apply attention mask
+        // The bias must share the q/k/v dtype — SDPA throws on an f32 mask over f16
+        // inputs. It does here by construction: the position scores come from einsums on
+        // query/key, the attention mask is built in the hidden-state dtype, and dividing
+        // by a Swift scalar preserves dtype.
+        var bias = positionBias.map { $0 / scaleFactor }
         if let mask = attentionMask {
-            // Mask is typically 0 for valid positions and -inf for masked positions
-            // Or 1 for valid and 0 for masked (need to convert)
-            attentionScores = attentionScores + mask
+            // 0 for valid positions, a large negative value for masked ones.
+            bias = bias.map { $0 + mask } ?? mask
         }
 
-        // Softmax and dropout
-        var attentionProbs = MLX.softmax(attentionScores, axis: -1)
-        attentionProbs = dropout(attentionProbs)
-
-        // Compute output: probs @ value
-        var output = MLX.matmul(attentionProbs, value)
+        // Dropout is intentionally absent: the model runs `train(false)`, where it is the
+        // identity, and the fused kernel has nowhere to put it.
+        var output = MLXFast.scaledDotProductAttention(
+            queries: query,
+            keys: key,
+            values: value,
+            scale: 1 / scaleFactor,
+            mask: bias
+        )
 
         // Reshape back: [batch, heads, seq, head_dim] -> [batch, seq, hidden]
         output = output.transposed(0, 2, 1, 3)
@@ -324,14 +370,20 @@ public class DisentangledSelfAttention: Module {
         batchSize: Int,
         seqLen: Int
     ) -> MLXArray {
-        // Project relative embeddings using KEY projection (share_att_key=true)
-        let posKey = keyProj(relEmbeddings)  // [num_buckets, hidden]
-
-        // Reshape for multi-head: [num_buckets, heads, head_dim]
-        let numBuckets = posKey.dim(0)
-        let posKeyHeads = posKey.reshaped([numBuckets, numHeads, headDim])
-        // Transpose to [heads, num_buckets, head_dim]
-        let posKeyTransposed = posKeyHeads.transposed(1, 0, 2)
+        // Project relative embeddings using KEY projection (share_att_key=true).
+        // Memoized: constant for the lifetime of the loaded weights (see `cache`).
+        let numBuckets = relEmbeddings.dim(0)
+        let posKeyTransposed: MLXArray
+        if let cached = cache.posKey {
+            posKeyTransposed = cached
+        } else {
+            let posKey = keyProj(relEmbeddings)  // [num_buckets, hidden]
+            posKeyTransposed = posKey
+                .reshaped([numBuckets, numHeads, headDim])
+                .transposed(1, 0, 2)             // [heads, num_buckets, head_dim]
+            MLX.eval(posKeyTransposed)           // materialize once, not per use
+            cache.posKey = posKeyTransposed
+        }
 
         // Step 1: Compute attention scores to ALL position embeddings
         // query: [batch, heads, seq, head_dim]
@@ -383,14 +435,20 @@ public class DisentangledSelfAttention: Module {
         batchSize: Int,
         seqLen: Int
     ) -> MLXArray {
-        // Project relative embeddings using QUERY projection (share_att_key=true)
-        let posQuery = queryProj(relEmbeddings)  // [num_buckets, hidden]
-
-        // Reshape for multi-head: [num_buckets, heads, head_dim]
-        let numBuckets = posQuery.dim(0)
-        let posQueryHeads = posQuery.reshaped([numBuckets, numHeads, headDim])
-        // Transpose to [heads, num_buckets, head_dim]
-        let posQueryTransposed = posQueryHeads.transposed(1, 0, 2)
+        // Project relative embeddings using QUERY projection (share_att_key=true).
+        // Memoized: constant for the lifetime of the loaded weights (see `cache`).
+        let numBuckets = relEmbeddings.dim(0)
+        let posQueryTransposed: MLXArray
+        if let cached = cache.posQuery {
+            posQueryTransposed = cached
+        } else {
+            let posQuery = queryProj(relEmbeddings)  // [num_buckets, hidden]
+            posQueryTransposed = posQuery
+                .reshaped([numBuckets, numHeads, headDim])
+                .transposed(1, 0, 2)               // [heads, num_buckets, head_dim]
+            MLX.eval(posQueryTransposed)
+            cache.posQuery = posQueryTransposed
+        }
 
         // Step 1: Compute attention scores from keys to ALL position embeddings
         // key: [batch, heads, seq, head_dim]

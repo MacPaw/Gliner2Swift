@@ -44,6 +44,47 @@ public struct ExtractedSpan: Sendable, Equatable {
     }
 }
 
+// MARK: - Span Score Buffer
+
+/// One schema's sigmoid span scores, `[instances, fields, rows, width]`, held on the CPU.
+///
+/// The whole tensor is read back once per schema. Slicing it on the GPU per field and per
+/// count-instance instead meant one `asArray` — and so one blocking round trip — for every
+/// (instance, field) pair, to fetch bytes that a single contiguous copy already brings over.
+public struct SpanScoreBuffer {
+    /// Row-major contents, `[instances][fields][rows][width]`.
+    public let values: [Float]
+
+    public let instances: Int
+    public let fields: Int
+    public let rows: Int
+    public let width: Int
+
+    /// Reads `scores` back in a single eval plus contiguous copy.
+    ///
+    /// The `contiguous` call is load-bearing, not tidiness: the einsum that produces these
+    /// scores returns a strided view, and `asArray` on a strided array falls out of its
+    /// `copyBytes` fast path into a Swift loop that walks the source chunk by chunk,
+    /// recomputing the source offset per chunk. Measured at 6 ms per call on a one-sentence
+    /// NER schema — more than the readback itself. One GPU copy kernel avoids all of it.
+    ///
+    /// - Parameter scores: `[instances, fields, rows, width]`, post-sigmoid.
+    public init(_ scores: MLXArray) {
+        precondition(scores.ndim == 4, "Span scores must be [instances, fields, rows, width]")
+        self.instances = scores.dim(0)
+        self.fields = scores.dim(1)
+        self.rows = scores.dim(2)
+        self.width = scores.dim(3)
+        self.values = MLX.contiguous(scores).asArray(Float32.self)
+    }
+
+    /// Flat offset of `[instance][field][row][0]`.
+    @inline(__always)
+    func rowStart(instance: Int, field: Int, row: Int) -> Int {
+        (((instance * fields) + field) * rows + row) * width
+    }
+}
+
 // MARK: - Span Decoder
 
 /// Decoder for extracting spans from model scores.
@@ -66,7 +107,10 @@ public struct SpanDecoder {
     /// Find valid spans above threshold.
     ///
     /// - Parameters:
-    ///   - scores: Span scores for a single field [textLen, maxWidth] (after sigmoid)
+    ///   - scores: The schema's score buffer
+    ///   - instance: Count instance to read
+    ///   - field: Field to read
+    ///   - rowOffset: First row of the text region (the prefix rows precede it)
     ///   - threshold: Confidence threshold
     ///   - textLen: Number of text tokens
     ///   - text: Original text
@@ -74,7 +118,10 @@ public struct SpanDecoder {
     ///   - endMap: End character positions for each token
     /// - Returns: List of extracted spans (text, confidence, charStart, charEnd)
     public func findSpans(
-        scores: MLXArray,
+        scores: SpanScoreBuffer,
+        instance: Int,
+        field: Int,
+        rowOffset: Int,
         threshold: Float,
         textLen: Int,
         text: String,
@@ -83,15 +130,9 @@ public struct SpanDecoder {
     ) -> [ExtractedSpan] {
         var spans: [ExtractedSpan] = []
 
-        // Get dimensions
-        let seqLen = scores.dim(0)
-        let widthDim = scores.dim(1)
-
-        // Bulk-copy the whole [seqLen, widthDim] score tile to the CPU in a single
-        // eval + contiguous memcpy, then index it in pure Swift. This replaces
-        // O(seqLen * widthDim) per-element `.item()` calls, each of which forces a
-        // blocking GPU->CPU command-buffer flush (the dominant cost of this loop).
-        let flatScores = scores.asArray(Float32.self)
+        let widthDim = scores.width
+        let rowCount = min(textLen, scores.rows - rowOffset)
+        guard rowCount > 0 else { return [] }
 
         // Hoisted out of the candidate loop: `text.count` and index walks are O(n) each,
         // and findSpans runs once per field per count-instance over the same text.
@@ -99,9 +140,11 @@ public struct SpanDecoder {
         let scalarCount = scalars.count
 
         // Iterate over all positions
-        for start in 0..<seqLen {
+        let base = scores.rowStart(instance: instance, field: field, row: rowOffset)
+        for start in 0..<rowCount {
+            let rowBase = base + start * widthDim
             for width in 0..<widthDim {
-                let score = flatScores[start * widthDim + width]
+                let score = scores.values[rowBase + width]
 
                 guard score >= threshold else { continue }
 
@@ -204,36 +247,6 @@ public struct SpanDecoder {
         }
     }
 
-    // MARK: - Score Slicing
-
-    /// Get text span scores (last textLen positions).
-    ///
-    /// - Parameters:
-    ///   - scores: Full span scores [count, fields, totalLen, maxWidth]
-    ///   - textLen: Number of text tokens
-    /// - Returns: Text span scores [count, fields, textLen, maxWidth]
-    public func getTextSpanScores(_ scores: MLXArray, textLen: Int) -> MLXArray {
-        // scores[:, :, -textLen:]
-        let totalLen = scores.dim(2)
-        let startIdx = totalLen - textLen
-        return scores[0..., 0..., startIdx...]
-    }
-
-    /// Get choice field scores (first positions, before text).
-    ///
-    /// - Parameters:
-    ///   - scores: Full span scores [count, fields, totalLen, maxWidth]
-    ///   - textLen: Number of text tokens
-    /// - Returns: Choice field scores [count, fields, prefixLen, maxWidth]
-    public func getChoiceFieldScores(_ scores: MLXArray, textLen: Int) -> MLXArray {
-        // scores[:, :, :-textLen]
-        let totalLen = scores.dim(2)
-        let prefixLen = totalLen - textLen
-        guard prefixLen > 0 else {
-            return MLXArray.zeros([scores.dim(0), scores.dim(1), 0, scores.dim(3)])
-        }
-        return scores[0..., 0..., 0..<prefixLen]
-    }
 }
 
 // MARK: - Choice Field Decoding
@@ -242,28 +255,32 @@ extension SpanDecoder {
     /// Find choice field value from prefix scores.
     ///
     /// - Parameters:
-    ///   - prefixScores: Scores for prefix tokens [prefixLen, maxWidth]
+    ///   - scores: The schema's score buffer
+    ///   - instance: Count instance to read
+    ///   - field: Field to read
+    ///   - prefixLength: Number of classification-prefix rows, which precede the text rows
     ///   - choices: Available choices
     ///   - textTokens: Prefix text tokens
     ///   - threshold: Confidence threshold
     ///   - dtype: "str" for single value, "list" for multiple
     /// - Returns: Selected choice(s) or nil
     public func decodeChoiceField(
-        prefixScores: MLXArray,
+        scores: SpanScoreBuffer,
+        instance: Int,
+        field: Int,
+        prefixLength: Int,
         choices: [String],
         textTokens: [String],
         threshold: Float,
         dtype: String,
         includeConfidence: Bool = false
     ) -> Any? {
-        guard prefixScores.dim(0) > 0 else { return nil }
+        guard prefixLength > 0 else { return nil }
 
-        // Read the width-0 column once. Reading `prefixScores[idx, 0].item()` per choice
-        // forces one blocking GPU->CPU flush per choice; a single bulk copy of the
-        // [prefixLen, maxWidth] tile is one flush total.
-        let flatScores = prefixScores.asArray(Float32.self)
-        let widthDim = prefixScores.dim(1)
-        func score(at index: Int) -> Float { flatScores[index * widthDim] }
+        // Python reads `prefix_scores[idx, 0]` — the width-0 column only.
+        func score(at index: Int) -> Float {
+            scores.values[scores.rowStart(instance: instance, field: field, row: index)]
+        }
 
         // Choice values carry no character span, so `includeSpans` adds nothing here —
         // Python emits {"text", "confidence"} for them, never start/end.
@@ -279,7 +296,7 @@ extension SpanDecoder {
                 if seen.contains(choice) { continue }
 
                 if let idx = findChoiceIndex(choice, in: textTokens) {
-                    guard idx < prefixScores.dim(0) else { continue }
+                    guard idx < prefixLength else { continue }
 
                     let value = score(at: idx)
                     if value >= threshold {
@@ -298,7 +315,7 @@ extension SpanDecoder {
 
             for choice in choices {
                 if let idx = findChoiceIndex(choice, in: textTokens) {
-                    guard idx < prefixScores.dim(0) else { continue }
+                    guard idx < prefixLength else { continue }
 
                     let value = score(at: idx)
                     if value > bestScore {

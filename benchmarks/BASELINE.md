@@ -91,3 +91,260 @@ Prediction-parity gate (`PredictionParityTests`, 58 cases vs Python `fastino/gli
 **35 passing, 23 expected failures, 0 unexpected passes, 0 failures.** Every expected
 failure is mapped to the Phase 1 item that fixes it; the list must reach empty by the end
 of Phase 1.
+
+---
+
+## After PR5 (Phase 2 partial: 2.3 CPU input IDs, 2.4 tokenizer memo) — 2026-07-20
+
+Same machine and protocol as the Phase 0 baseline; fp16 canonical model.
+
+| scenario | baseline p50 | PR5 p50 | change |
+|---|---|---|---|
+| 1-ner-8-labels | 32.18 | 31.91 | -0.8 % |
+| 2-mixed-schema | 41.89 | 42.03 | +0.3 % (noise) |
+| 3-long-text | 76.25 | 75.62 | -0.8 % |
+| 4-batch-32 | 340.85 | 347.39 | +1.9 % (noise) |
+
+**Both changes measure at roughly 1 %, i.e. within noise** — even though the plan rated
+2.4 ("schema prompt tokenization is redone per text and per call") as *high* impact. The
+memo demonstrably works (the schema half of the prompt is byte-identical every call, so
+it is nearly all cache hits), and the GPU round-trip for input IDs is genuinely gone. The
+CPU work they eliminate simply is not on the critical path.
+
+This is the second independent confirmation of the baseline's conclusion: per-inference
+latency is dominated by GPU-side kernel-launch and synchronization overhead, not by CPU
+preprocessing and not by memory bandwidth. The remaining Phase 2/3 items that reduce
+*kernel and sync counts* — 2.1 bulk score readback, 2.2 countPred sync batching, 3.1/3.2
+rel-pos hoists, 3.4 GRU restructuring, 3.5 vectorized pooling — are where the headroom
+should be, and each should be measured individually rather than assumed.
+
+---
+
+## After PR6 (Phase 3.1 + 3.2: relative-position hoists) — 2026-07-20
+
+Same machine and protocol; fp16 canonical model.
+
+| scenario | baseline p50 | PR6 p50 | improvement |
+|---|---|---|---|
+| 1-ner-8-labels | 32.18 | **24.03** | **25.3 % faster** |
+| 2-mixed-schema | 41.89 | **34.45** | **17.8 % faster** |
+| 3-long-text | 76.25 | **61.97** | **18.7 % faster** |
+| 4-batch-32 | 340.85 | **294.37** | **13.6 % faster** |
+
+Bit-exact: all 200 tests pass, including AttentionDebugTests' element-wise `< 1e-4` c2p/p2c
+gates and `< 1e-3` layer-0 gate, and prediction parity is unchanged at 55/58. This is pure
+memoization of computations that were producing byte-identical results.
+
+Costs: peak memory +11 MB (the cached [heads, buckets, headDim] projections, ~19 MB across
+12 layers at fp16), and cold start 413 → 465 ms since the first inference now materializes
+the caches.
+
+**This validates the baseline's hypothesis.** The win is largest on the shortest input
+(25 % on a single sentence, 14 % on the 32-text batch) — exactly the signature of removing
+a fixed, length-independent per-call cost. Two failed attempts at the other two candidate
+bottlenecks (fp16 for bandwidth, tokenizer memo for CPU) plus this success localize the
+remaining headroom firmly in **GPU kernel count and per-call redundant work**: 3.4 (GRU,
+~500-600 dispatches per countEmbed), 3.5 (per-subword pooling launches), 2.1/2.2 (decode
+sync stalls), 3.3 (fused SDPA).
+
+---
+
+## After PR7 (Phase 3.4: GRU restructuring) — 2026-07-20
+
+| scenario | PR6 p50 | PR7 p50 | change |
+|---|---|---|---|
+| 1-ner-8-labels | 24.03 | 24.06 | ~0 % |
+| 2-mixed-schema | 34.45 | **33.14** | **-3.8 %** |
+| 3-long-text | 61.97 | 62.24 | ~0 % |
+| 4-batch-32 | 294.37 | 294.08 | ~0 % |
+
+The win lands only on the structure-bearing scenario, which is consistent with the
+mechanism: entity-only schemas run `countEmbed` with a single count slot, so the
+recurrence is one or two timesteps and there is little per-step overhead to remove. A
+4-field structure runs the full predicted-count loop. Expect the gain to scale with
+predicted instance counts, so structure- and relation-heavy workloads benefit most.
+
+Cumulative since the Phase 0 baseline: 8-label NER **32.18 -> 24.06 ms (-25.2 %)**,
+mixed schema **41.89 -> 33.14 (-20.9 %)**, long text **76.25 -> 62.24 (-18.4 %)**,
+batch-32 **340.85 -> 294.08 (-13.7 %)**.
+
+---
+
+## After PR8 (Phase 3.5 + 3.6: vectorized gathers, no retained activations) — 2026-07-20
+
+Same machine and protocol; fp16 canonical model. The "before" column is a fresh run of
+`32e1d1a` measured in the same session as the "after" column, so the two are directly
+comparable; it reads slightly differently from the PR7 table above purely from run-to-run
+variation.
+
+| scenario | before p50 | after p50 | improvement |
+|---|---|---|---|
+| 1-ner-8-labels | 23.98 | **21.04** | **12.3 % faster** |
+| 2-mixed-schema | 32.84 | **29.32** | **10.7 % faster** |
+| 3-long-text | 63.28 | **45.41** | **28.2 % faster** |
+| 4-batch-32 | 293.10 | **254.00** | **13.3 % faster** |
+
+All 199 tests pass; prediction parity is unchanged at 55/58 with the same three non-ASCII
+expected failures. Cold start 428 -> 412 ms.
+
+### The two items measured separately
+
+Running 3.5 alone (3.6's flag flipped back on) gives p50 21.19 / 29.33 / 45.94 / 254.71 —
+i.e. **the entire latency win is 3.5**, and 3.6 is within noise on every scenario. That is
+what it should be: dropping the retained activations frees buffers, it does not remove
+work. 3.6's effect shows up in peak memory instead, and it is modest:
+
+| scenario | peak MB, 3.5 only | peak MB, 3.5 + 3.6 |
+|---|---|---|
+| 1-ner-8-labels | 445.9 | 444.6 |
+| 2-mixed-schema | 454.7 | 451.6 |
+| 3-long-text | 699.9 | 699.3 |
+| 4-batch-32 | 512.6 | 500.4 |
+
+The 12 MB it returns on batch-32 is real but far short of the "12 x [B, S, 768] buffers"
+the plan estimated, so something else sets the high-water mark on the long-text and
+single-text scenarios. Worth knowing before Phase 4 sells itself as the memory phase.
+(Note the long-text peak is 699 MB here versus 656 MB at the Phase 0 baseline: that
+regression arrived with PR6/PR7, which recorded no peak-memory column, not with this
+change — `32e1d1a` measures 699.9 MB.)
+
+### Why 3.5 is the biggest single win since the rel-pos hoists
+
+The long document gains the most (28 %), which is the opposite gradient from PR6's
+rel-pos hoists (largest on the *shortest* input). That is the expected signature: the
+work removed here scales with token count. Pooling used to take one lazy row slice per
+subword and one `stacked` + reduce per word — on a ~450-word document that is well over a
+thousand kernel launches per sample, all to produce a `[words, 768]` matrix. It is now a
+single `take` against index arrays computed during tokenization. Schema-embedding
+extraction got the same treatment: the decode path no longer walks every position looking
+each token id back up in the vocabulary, because the marker positions are recorded when
+the prompt is tokenized, one `take` per schema.
+
+Cumulative since the Phase 0 baseline: 8-label NER **32.18 -> 21.04 ms (-34.6 %)**,
+mixed schema **41.89 -> 29.32 (-30.0 %)**, long text **76.25 -> 45.41 (-40.4 %)**,
+batch-32 **340.85 -> 254.00 (-25.5 %)**.
+
+Remaining Phase 2/3 kernel-count items are now 2.1 (bulk `spanScores` readback), 2.2
+(`countPred` sync batching), 2.5/2.7 and 3.3 (fused SDPA).
+
+---
+
+## After PR9 (Phase 3.3: fused SDPA in the encoder) — 2026-07-20
+
+Same machine and protocol; fp16 canonical model. Two consecutive runs are shown because
+the deltas here are small enough that a single run would not distinguish them from noise.
+
+| scenario | PR8 p50 | PR9 p50 (run 1 / run 2) | change |
+|---|---|---|---|
+| 1-ner-8-labels | 21.04 | 20.83 / 20.89 | -0.9 % |
+| 2-mixed-schema | 29.32 | 29.46 / 29.55 | +0.6 % (noise) |
+| 3-long-text | 45.41 | **43.05 / 43.40** | **-4.9 %** |
+| 4-batch-32 | 254.00 | 250.11 / 248.92 | -1.4 % |
+
+All 205 tests pass with **no tolerance loosened** — including `AttentionDebugTests`'
+element-wise `< 1e-4` c2p/p2c gates and its `< 1e-3` layer-0 gate, which is where a
+reassociation of this size would show up first. Prediction parity unchanged at 55/58.
+
+The latency win is modest and concentrated on the long document, which fits: the manual
+chain's extra kernels (a scaled-key copy, two bias adds, a separate softmax, a dropout
+no-op) are cheap at seq ~128 and stop being cheap once the `[batch, heads, seq, seq]`
+score matrix is large.
+
+**The memory result is the more interesting one.** Long-text peak drops
+**699.3 -> 644.2 MB (-55 MB)**, and it is reproducible across runs. That answers the
+question PR8 left open about what sets the long-text high-water mark: it was the
+materialized attention scores and probabilities, which the fused kernel never writes out.
+Batch-32 peak moves the other way, 500.4 -> ~516.5 MB, presumably fused-kernel workspace
+across 8 sequences at once. Net, this is a real memory improvement exactly where memory
+was worst.
+
+Cumulative since the Phase 0 baseline: 8-label NER **32.18 -> 20.89 ms (-35.1 %)**,
+mixed schema **41.89 -> 29.55 (-29.5 %)**, long text **76.25 -> 43.40 (-43.1 %)**,
+batch-32 **340.85 -> 248.92 (-27.0 %)**.
+
+Phase 3 is complete. The remaining Phase 2 items (2.1 bulk `spanScores` readback, 2.2
+`countPred` sync batching, 2.5 CPU string micro-fixes, 2.7 span-index construction) are
+the next kernel-and-sync work, followed by Phase 4.
+
+---
+
+## After PR10 (Phase 2.1 + 2.2: one score readback, batched count syncs) — 2026-07-20
+
+Same machine and protocol; fp16 canonical model. The "before" column is a control run of
+`b9fc121` measured in the same session.
+
+| scenario | before p50 | after p50 | improvement |
+|---|---|---|---|
+| 1-ner-8-labels | 20.95 | **20.38** | 2.7 % |
+| 2-mixed-schema | 29.58 | **26.86** | **9.2 %** |
+| 3-long-text | 44.78 | **43.53** | 2.8 % |
+| 4-batch-32 | 249.22 | **239.25** | **4.0 %** |
+
+All 205 tests pass — this is a tier-A change and nothing moved. Prediction parity
+unchanged at 55/58.
+
+### A trap worth recording: `asArray` on a strided array
+
+The first working version of this change was a **9–36 % regression**, worst on
+mixed-schema. Instrumenting it showed 6 ms of a 19.6 ms call inside the single
+`asArray` — to copy 1984 floats, i.e. 8 KB. The copy was obviously not the cost.
+
+The cause is in `MLXArray+Bytes.swift`: `asArray` uses `copyBytes` only when the source
+backing is contiguous. Otherwise it falls into a Swift loop that walks the array chunk by
+chunk, recomputing the source offset with a `zip(index, strides).reduce` per chunk. The
+einsum that produces the span scores returns a strided view, so the full-array readback
+took the slow path while the old per-field slices happened to take the fast one. Inserting
+`MLX.contiguous(...)` — one GPU copy kernel — turned the regression into the table above.
+
+Generalizable: **before reading an MLX array back to the CPU in bulk, make it contiguous.**
+The cost is invisible in the shapes and shows up only under measurement. It is also
+amplified by the Debug build the benchmark uses, but the fix is right in any configuration.
+
+The distribution of the win is consistent with the mechanism. Mixed-schema gains most (it
+has the most (instance, field) pairs, hence the most eliminated round trips), and
+entity-only scenarios gain least. 2.2 contributes nothing measurable on its own — a
+scenario with one span schema has one count sync either way — and was verified separately
+by disabling it; it is kept because it is free and pays off for multi-schema calls.
+
+Cumulative since the Phase 0 baseline: 8-label NER **32.18 -> 20.38 ms (-36.7 %)**,
+mixed schema **41.89 -> 26.86 (-35.9 %)**, long text **76.25 -> 43.53 (-42.9 %)**,
+batch-32 **340.85 -> 239.25 (-29.8 %)**.
+
+---
+
+## After PR11 (Phase 2.5 + 2.7: span-index construction, tokenizer bounds) — 2026-07-20
+
+| scenario | PR10 p50 | PR11 p50 | improvement |
+|---|---|---|---|
+| 1-ner-8-labels | 20.38 | **19.77** | 3.0 % |
+| 2-mixed-schema | 26.86 | **26.57** | 1.1 % |
+| 3-long-text | 43.53 | **41.91** | 3.7 % |
+| 4-batch-32 | 239.25 | **221.33** | **7.5 %** |
+
+All 205 tests pass; tier-A clean; prediction parity unchanged at 55/58.
+
+2.7 builds the span (start, end) pairs and their validity flags in the single CPU pass
+that was already running, instead of writing (-1, -1) and recovering the same information
+on the GPU with two `equal`s, a `logicalOr` and a `where`. That `where` compared against a
+float32 `zeros`, which promoted the index tensor to float32 and made the span gather
+float-indexed; indices are int32 end to end now. Four kernels per call become none, which
+is why batch-32 — four batches per iteration, each paying the fixed cost per sample —
+gains the most.
+
+2.5's remaining items: the special-token probe in `preTokenize` now tests one set of first
+characters before trying ~15 `hasPrefix` calls per character, and Viterbi's inner loop is
+bounded by the real longest vocabulary piece instead of a hardcoded 50.
+
+One trap here too. Deriving that bound with `token.count` over 128k vocabulary entries
+cost **~45 ms of cold start** (403-442 ms became 472-478 ms), because `String.count` breaks
+graphemes. `token.utf8.count` is O(1) on a native Swift string and can only over-estimate
+the Character length, so the bound stays correct and cold start returned to 429 ms. Moving
+the computation into the existing parse loop did *not* help — the cost was the 128k
+`count` calls themselves, not the extra pass. Worth measuring cold start, not just p50,
+whenever load-time work changes.
+
+Phases 2 and 3 are now complete. Cumulative since the Phase 0 baseline:
+8-label NER **32.18 -> 19.77 ms (-38.6 %)**, mixed schema **41.89 -> 26.57 (-36.6 %)**,
+long text **76.25 -> 41.91 (-45.0 %)**, batch-32 **340.85 -> 221.33 (-35.1 %)**.
+Cold start 413 -> 429 ms and peak memory is roughly flat (433 -> 450 MB on short text,
+656 -> 644 MB on the long document).

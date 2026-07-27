@@ -177,10 +177,14 @@ public class DeBERTaEncoder: Module {
     /// - Parameters:
     ///   - inputIds: Token IDs [batch, seq_len]
     ///   - attentionMask: Optional attention mask [batch, seq_len]
+    ///   - outputHiddenStates: Whether to return every layer's output. Off by default: only
+    ///     `lastHiddenState` is on the inference path, and holding the other 12 `[B, S, 768]`
+    ///     buffers alive for the whole forward keeps the allocator from reusing them.
     /// - Returns: Encoder output with hidden states and optional attention weights
     public func callAsFunction(
         _ inputIds: MLXArray,
-        attentionMask: MLXArray? = nil
+        attentionMask: MLXArray? = nil,
+        outputHiddenStates: Bool = false
     ) -> DeBERTaEncoderOutput {
         // Get embeddings
         var hiddenStates = embeddings(inputIds)
@@ -197,7 +201,7 @@ public class DeBERTaEncoder: Module {
         let normalizedRelEmbeddings = relEmbeddingsLayerNorm(relEmbeddings)
 
         // Apply encoder layers
-        var allHiddenStates: [MLXArray] = [hiddenStates]
+        var allHiddenStates: [MLXArray] = outputHiddenStates ? [hiddenStates] : []
 
         for layer in layers {
             hiddenStates = layer(
@@ -205,7 +209,9 @@ public class DeBERTaEncoder: Module {
                 relEmbeddings: normalizedRelEmbeddings,
                 attentionMask: expandedMask
             )
-            allHiddenStates.append(hiddenStates)
+            if outputHiddenStates {
+                allHiddenStates.append(hiddenStates)
+            }
         }
 
         // NOTE: DeBERTa does NOT apply final LayerNorm to hidden states!
@@ -240,7 +246,9 @@ public struct DeBERTaEncoderOutput {
     /// Final layer hidden states [batch, seq, hidden]
     public let lastHiddenState: MLXArray
 
-    /// Hidden states from all layers (including embeddings)
+    /// Hidden states from all layers (including embeddings).
+    ///
+    /// Empty unless the forward pass was asked for them via `outputHiddenStates: true`.
     public let hiddenStates: [MLXArray]
 
     /// Get output at specific layer (0 = embeddings, 1-12 = layers)
@@ -272,8 +280,23 @@ extension DeBERTaEncoder {
     /// - Parameters:
     ///   - weights: Weight dictionary
     ///   - prefix: Key prefix (typically "encoder" or empty)
+    /// Discard every layer's memoized relative-position projection.
+    ///
+    /// Those projections are derived from the rel-embedding table and the query/key
+    /// weights, so any weight mutation (base load, LoRA merge, adapter unload) invalidates
+    /// them. `update(parameters:)` mutates arrays in place, so a stale cache would
+    /// silently keep serving the previous model's values.
+    public func resetCaches() {
+        for layer in layers {
+            layer.attention.resetCaches()
+        }
+    }
+
     public func loadWeights(_ weights: [String: MLXArray], prefix: String = "") {
         let p = prefix.isEmpty ? "" : "\(prefix)."
+
+        // Any previously memoized projections belong to the outgoing weights.
+        resetCaches()
 
         // Load embeddings
         embeddings.loadWeights(weights, prefix: "\(p)embeddings")

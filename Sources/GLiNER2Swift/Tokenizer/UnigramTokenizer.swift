@@ -44,10 +44,41 @@ public final class UnigramTokenizer: @unchecked Sendable {
     /// Special token to ID mapping (for tokens from added_tokens)
     private let specialTokenToId: [String: Int]
 
+    /// First characters of every special token.
+    ///
+    /// `preTokenize` used to test all ~15 special tokens with `hasPrefix` at every
+    /// character of every word. One set lookup rejects the overwhelming majority of
+    /// positions (in practice every special token starts with "[").
+    private let specialTokenFirstChars: Set<Character>
+
+    /// Upper bound on the length of any vocabulary token, in Characters.
+    ///
+    /// Viterbi's inner loop tries every substring up to this length; the bound was
+    /// hardcoded at 50 while the real maximum is far smaller, so every position paid for
+    /// substrings that could not possibly be in the vocabulary.
+    private let maxPieceLength: Int
+
     /// Collapses whitespace runs and tabs/newlines, matching the leading `Replace` stage
     /// of the normalizer Python actually runs (see `normalize` below).
     private static let whitespaceRunPattern = try? NSRegularExpression(
         pattern: "\\s{2,}|[\\n\\r\\t]", options: [])
+
+    /// Memoized `encode` results, keyed by the exact input string.
+    ///
+    /// The processor encodes one token at a time, and the schema half of the prompt is
+    /// byte-identical on every call with the same schema — so without memoization every
+    /// entity name, field name and (long) description string is re-run through Viterbi
+    /// for every text and every inference. Natural-language word frequency is Zipfian, so
+    /// the text half hits often too.
+    ///
+    /// Guarded because Phase 5.3 parallelizes per-text preprocessing; the lock costs far
+    /// less than re-running the Viterbi lattice.
+    private var encodeCache: [String: [Int]] = [:]
+    private let encodeCacheLock = NSLock()
+
+    /// Upper bound on cached entries, so a long-running process cannot grow unboundedly
+    /// on adversarial or highly varied input.
+    private static let encodeCacheLimit = 100_000
 
     /// Special token IDs
     public let padTokenId: Int
@@ -101,6 +132,7 @@ public final class UnigramTokenizer: @unchecked Sendable {
 
         var vocab: [String: (id: Int, score: Float)] = [:]
         var idToToken: [Int: String] = [:]
+        var longestPiece = 1
 
         for (idx, entry) in vocabArray.enumerated() {
             guard entry.count >= 2,
@@ -120,6 +152,11 @@ public final class UnigramTokenizer: @unchecked Sendable {
 
             vocab[token] = (id: idx, score: score)
             idToToken[idx] = token
+            // UTF-8 count, not Character count: it is O(1) on a native Swift string,
+            // whereas `count` breaks graphemes and cost ~40 ms of cold start across 128k
+            // tokens. It can only over-estimate the Character length, so the Viterbi bound
+            // stays correct — just marginally loose for multi-byte pieces.
+            longestPiece = Swift.max(longestPiece, token.utf8.count)
         }
 
         // Parse added_tokens for special tokens
@@ -144,6 +181,8 @@ public final class UnigramTokenizer: @unchecked Sendable {
         }
 
         self.vocab = vocab
+        self.specialTokenFirstChars = Set(specialTokenSet.compactMap { $0.first })
+        self.maxPieceLength = longestPiece
         self.idToToken = idToToken
         self.specialTokens = specialTokenSet
         self.specialTokenToId = tokenToId
@@ -239,8 +278,21 @@ public final class UnigramTokenizer: @unchecked Sendable {
     /// - Parameter text: Input text
     /// - Returns: Array of token IDs
     public func encode(_ text: String) -> [Int] {
-        let tokens = tokenize(text)
-        return tokensToIds(tokens)
+        encodeCacheLock.lock()
+        if let cached = encodeCache[text] {
+            encodeCacheLock.unlock()
+            return cached
+        }
+        encodeCacheLock.unlock()
+
+        let ids = tokensToIds(tokenize(text))
+
+        encodeCacheLock.lock()
+        if encodeCache.count < Self.encodeCacheLimit {
+            encodeCache[text] = ids
+        }
+        encodeCacheLock.unlock()
+        return ids
     }
 
     /// Encode text with [CLS] and [SEP] tokens
@@ -319,19 +371,23 @@ public final class UnigramTokenizer: @unchecked Sendable {
 
         while i < text.endIndex {
             // Check for special tokens at current position
+            // The first-character test rejects nearly every position for the cost of one
+            // set lookup, instead of ~15 `hasPrefix` calls per character.
             var foundSpecial = false
-            for special in specialTokens {
-                if text[i...].hasPrefix(special) {
-                    // Save current word
-                    if !currentWord.isEmpty {
-                        words.append(currentWord)
-                        currentWord = ""
+            if specialTokenFirstChars.contains(text[i]) {
+                for special in specialTokens {
+                    if text[i...].hasPrefix(special) {
+                        // Save current word
+                        if !currentWord.isEmpty {
+                            words.append(currentWord)
+                            currentWord = ""
+                        }
+                        // Add special token
+                        words.append(special)
+                        i = text.index(i, offsetBy: special.count)
+                        foundSpecial = true
+                        break
                     }
-                    // Add special token
-                    words.append(special)
-                    i = text.index(i, offsetBy: special.count)
-                    foundSpecial = true
-                    break
                 }
             }
 
@@ -390,7 +446,7 @@ public final class UnigramTokenizer: @unchecked Sendable {
             guard dp[i] > -Float.infinity else { continue }
 
             // Try all possible tokens starting at position i
-            for j in (i + 1)...(min(i + 50, n)) {  // Max token length = 50
+            for j in (i + 1)...(min(i + maxPieceLength, n)) {
                 let substring = String(chars[i..<j])
 
                 if let (_, score) = vocab[substring] {
