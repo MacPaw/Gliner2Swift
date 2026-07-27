@@ -143,8 +143,10 @@ public class SchemaTransformer {
     /// - Parameters:
     ///   - text: Input text
     ///   - schema: Schema dictionary
+    ///   - maxLen: Optional cap on the number of whitespace-split text words; longer
+    ///     inputs are truncated to the first `maxLen` words before schema/prefix encoding.
     /// - Returns: Transformed record ready for batching
-    public func transform(text: String, schema: [String: Any]) -> TransformedRecord {
+    public func transform(text: String, schema: [String: Any], maxLen: Int? = nil) -> TransformedRecord {
         // Normalize text: ensure ends with punctuation
         var normalizedText = text
         if !normalizedText.isEmpty && !normalizedText.hasSuffix(".") &&
@@ -163,8 +165,17 @@ public class SchemaTransformer {
             wrapClassificationFields(schema: &mutableSchema, prefix: prefix)
         }
 
-        // Tokenize text
-        let textTokens = wordSplitter.tokenize(normalizedText, lower: true)
+        // Tokenize text into whitespace-split words (with char start/end maps).
+        var textTokens = wordSplitter.tokenize(normalizedText, lower: true)
+
+        // maxLen truncation (Python processor.py:408-410): keep the first `maxLen` words,
+        // done here — after word splitting, before the prefix/schema is joined on. The kept
+        // words' char start/end still index the original (normalized) string, so extracted
+        // spans keep their real positions; only words beyond the cap are dropped.
+        if let maxLen, maxLen >= 0, textTokens.count > maxLen {
+            textTokens = Array(textTokens.prefix(maxLen))
+        }
+
         let allTextTokens = prefix + textTokens.texts
         let prefixLen = prefix.count
 
@@ -431,10 +442,22 @@ public class SchemaTransformer {
                     continue
                 }
 
+                // Classification extras (Phase 6.5): prompt, per-label descriptions, and
+                // few-shot examples stored as [[input, output]] pairs.
+                let prompt = classification["prompt"] as? String
+                let labelDescriptions = classification["label_descriptions"] as? [String: String]
+                let examples = (classification["examples"] as? [[String]])?.compactMap {
+                    pair -> (input: String, output: String)? in
+                    pair.count >= 2 ? (pair[0], pair[1]) : nil
+                }
+
                 let schemaTokens = buildSchemaTokens(
                     parent: task,
                     fields: labels,
-                    childPrefix: SpecialTokens.lToken
+                    childPrefix: SpecialTokens.lToken,
+                    prompt: prompt,
+                    labelDescriptions: labelDescriptions,
+                    examples: examples
                 )
 
                 // Classification output: binary labels
@@ -452,25 +475,39 @@ public class SchemaTransformer {
         return results
     }
 
-    /// Build schema token sequence
+    /// Build schema token sequence.
+    ///
+    /// The prompt string mirrors Python `_transform_schema` at inference (example_mode
+    /// "both", no shuffling): optional `task: prompt`, then `[DESCRIPTION] label: desc` for
+    /// each label that has one (in label order), then `[EXAMPLE] input [OUTPUT] output` for
+    /// each few-shot example whose output is one of the labels.
     private func buildSchemaTokens(
         parent: String,
         fields: [String],
         childPrefix: String,
         prompt: String? = nil,
-        labelDescriptions: [String: String]? = nil
+        labelDescriptions: [String: String]? = nil,
+        examples: [(input: String, output: String)]? = nil
     ) -> [String] {
         var promptStr = parent
         if let prompt = prompt {
             promptStr = "\(parent): \(prompt)"
         }
 
-        // Add descriptions if available
+        // Add descriptions if available (label order; only labels that have one).
         if let descriptions = labelDescriptions {
             for label in fields {
                 if let desc = descriptions[label] {
                     promptStr += " \(SpecialTokens.descToken) \(label): \(desc)"
                 }
+            }
+        }
+
+        // Few-shot examples: kept in given order, only those whose output is a label.
+        if let examples = examples {
+            for example in examples where fields.contains(example.output) {
+                promptStr += " \(SpecialTokens.exampleToken) \(example.input)"
+                    + " \(SpecialTokens.outputToken) \(example.output)"
             }
         }
 

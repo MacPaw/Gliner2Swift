@@ -482,9 +482,58 @@ extension Extractor {
     /// - Parameters:
     ///   - url: URL to model.safetensors (combined weights file)
     ///   - dtype: Floating-point policy to apply to the loaded weights
-    public func loadWeights(from url: URL, dtype: DTypePolicy = .auto) throws {
+    /// Critical weight keys that must be present for the model to run on trained values
+    /// rather than random init. Not the full 263-key set (which would be brittle across
+    /// dtypes and index ranges) — a curated set that covers every encoder layer plus each
+    /// head, so a truncated, wrong, or partial checkpoint is caught. The packed int8 layout
+    /// keeps these `.weight` keys (as uint32) and adds `.scales`/`.biases`, so the set is a
+    /// subset either way.
+    static func requiredCriticalKeys() -> [String] {
+        var keys = [
+            "encoder.embeddings.word_embeddings.weight",
+            "encoder.embeddings.LayerNorm.weight",
+            "encoder.encoder.rel_embeddings.weight",
+            "encoder.encoder.LayerNorm.weight",
+            "countEmbed.gru.weightIH",
+            "countEmbed.gru.weightHH",
+            "countEmbed.posEmbedding.weight",
+        ]
+        for i in 0..<12 {
+            keys.append("encoder.encoder.layer.\(i).attention.self.query_proj.weight")
+            keys.append("encoder.encoder.layer.\(i).output.dense.weight")
+        }
+        return keys
+    }
+
+    /// Prefix families whose indices vary; strict load only checks at least one is present.
+    private static let requiredKeyFamilies = [
+        "spanRep.spanRepLayer.projectStart.",
+        "spanRep.spanRepLayer.projectEnd.",
+        "spanRep.spanRepLayer.outProject.",
+        "classifier.layers.",
+        "countPred.layers.",
+        "countEmbed.transformer.",
+    ]
+
+    /// Throw if the checkpoint is missing any critical key. Off unless `strict` is requested.
+    static func verifyRequired(_ weights: [String: MLXArray]) throws {
+        let present = Set(weights.keys)
+        var missing = requiredCriticalKeys().filter { !present.contains($0) }
+        missing += requiredKeyFamilies
+            .filter { family in !present.contains { $0.hasPrefix(family) } }
+            .map { $0 + "*" }
+        guard missing.isEmpty else {
+            throw GLiNER2Error.weightLoadingFailed(
+                "strict load: \(missing.count) required weight(s) missing "
+                + "(would keep random init): \(missing.prefix(8).joined(separator: ", "))"
+                + (missing.count > 8 ? " …" : ""))
+        }
+    }
+
+    public func loadWeights(from url: URL, dtype: DTypePolicy = .auto, strict: Bool = false) throws {
         let rawWeights = try loadArrays(url: url)
         let sanitized = Extractor.sanitize(weights: rawWeights)
+        if strict { try Extractor.verifyRequired(sanitized) }
 
         // A pre-quantized checkpoint carries packed weights, detectable by `.scales` keys.
         // Build the quantized structure BEFORE loading so the packed tensors land in

@@ -69,6 +69,9 @@ public class GLiNER2 {
     ///   - compileEncoder: Trace the encoder forward with `MLX.compile` and bucket-pad
     ///     sequence lengths so the per-shape cache hits. Off by default — it changes fp16
     ///     results at the ULP level (see `benchmarks/BASELINE.md`).
+    ///   - strict: When true, throw if the checkpoint is missing critical weights instead
+    ///     of silently keeping random initialization. Off by default.
+    ///   - hfToken: Optional HuggingFace token for gated/private repos (env fallback).
     ///   - progressHandler: Optional progress callback for Hub downloads
     /// - Returns: Initialized GLiNER2 model
     public static func fromPretrained(
@@ -77,6 +80,8 @@ public class GLiNER2 {
         quantization: QuantizationPolicy = .none,
         gpuCache: GPUCachePolicy = .unchanged,
         compileEncoder: Bool = false,
+        strict: Bool = false,
+        hfToken: String? = nil,
         progressHandler: @Sendable @escaping (Progress) -> Void = { _ in }
     ) async throws -> GLiNER2 {
         gpuCache.apply()
@@ -90,6 +95,7 @@ public class GLiNER2 {
             // Download from HuggingFace Hub (uses shared ~/.cache/huggingface/hub/ cache)
             baseUrl = try await downloadModelDirectory(
                 repoId: pathOrRepo,
+                hfToken: hfToken,
                 progressHandler: progressHandler
             )
         }
@@ -140,7 +146,7 @@ public class GLiNER2 {
 
         // 4. Load weights - try combined file first, fall back to split files
         if let combinedUrl = combinedWeightsUrl {
-            try gliner2.model.loadWeights(from: combinedUrl, dtype: dtype)
+            try gliner2.model.loadWeights(from: combinedUrl, dtype: dtype, strict: strict)
             gliner2.baseWeightsUrl = combinedUrl
         } else if let modelUrl = splitModelWeightsUrl,
                   let encoderUrl = splitEncoderWeightsUrl {
@@ -274,20 +280,24 @@ public class GLiNER2 {
     ///   - threshold: Confidence threshold (default: 0.5)
     ///   - includeConfidence: Include confidence scores
     ///   - includeSpans: Include character-level positions
+    ///   - maxLen: Optional cap on whitespace-split text words; longer input is truncated
+    ///     to the first `maxLen` words before encoding
     /// - Returns: Extraction results
     public func extract(
         text: String,
         schema: Schema,
         threshold: Float = 0.5,
         includeConfidence: Bool = false,
-        includeSpans: Bool = false
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
     ) -> [String: Any] {
         let results = batchExtract(
             texts: [text],
             schema: schema,
             threshold: threshold,
             includeConfidence: includeConfidence,
-            includeSpans: includeSpans
+            includeSpans: includeSpans,
+            maxLen: maxLen
         )
         return results.first ?? [:]
     }
@@ -301,6 +311,7 @@ public class GLiNER2 {
     ///   - threshold: Confidence threshold
     ///   - includeConfidence: Include confidence scores
     ///   - includeSpans: Include character-level positions
+    ///   - maxLen: Optional cap on whitespace-split text words per input
     /// - Returns: List of extraction results
     public func batchExtract(
         texts: [String],
@@ -308,7 +319,8 @@ public class GLiNER2 {
         batchSize: Int = 8,
         threshold: Float = 0.5,
         includeConfidence: Bool = false,
-        includeSpans: Bool = false
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
     ) -> [[String: Any]] {
         guard !texts.isEmpty else { return [] }
 
@@ -319,7 +331,7 @@ public class GLiNER2 {
         var records: [TransformedRecord] = []
         for text in texts {
             let normalizedText = normalizeText(text)
-            let record = processor.transform(text: normalizedText, schema: internalSchemaDict)
+            let record = processor.transform(text: normalizedText, schema: internalSchemaDict, maxLen: maxLen)
             records.append(record)
         }
 
@@ -384,7 +396,8 @@ public class GLiNER2 {
         entityTypes: [String],
         threshold: Float = 0.5,
         includeConfidence: Bool = false,
-        includeSpans: Bool = false
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
     ) -> [String: Any] {
         let schema = createSchema().entities(entityTypes)
         return extract(
@@ -392,26 +405,71 @@ public class GLiNER2 {
             schema: schema,
             threshold: threshold,
             includeConfidence: includeConfidence,
-            includeSpans: includeSpans
+            includeSpans: includeSpans,
+            maxLen: maxLen
         )
     }
 
-    /// Classify text
+    /// One classification task's configuration, for the multi-task `classifyText` form.
+    public struct ClassificationTask {
+        public let task: String
+        public let labels: [String]
+        public let multiLabel: Bool
+        public let threshold: Float
+        public let prompt: String?
+        public let labelDescriptions: [String: String]?
+        public let examples: [(input: String, output: String)]?
+
+        public init(
+            task: String, labels: [String], multiLabel: Bool = false, threshold: Float = 0.5,
+            prompt: String? = nil, labelDescriptions: [String: String]? = nil,
+            examples: [(input: String, output: String)]? = nil
+        ) {
+            self.task = task; self.labels = labels; self.multiLabel = multiLabel
+            self.threshold = threshold; self.prompt = prompt
+            self.labelDescriptions = labelDescriptions; self.examples = examples
+        }
+    }
+
+    /// Classify text — single task, optionally with a prompt, per-label descriptions, and
+    /// few-shot examples (Phase 6.5).
     public func classifyText(
         text: String,
         task: String,
         labels: [String],
         multiLabel: Bool = false,
         threshold: Float = 0.5,
-        includeConfidence: Bool = false
+        includeConfidence: Bool = false,
+        prompt: String? = nil,
+        labelDescriptions: [String: String]? = nil,
+        examples: [(input: String, output: String)]? = nil,
+        maxLen: Int? = nil
     ) -> [String: Any] {
-        let schema = createSchema().classification(task: task, labels: labels, multiLabel: multiLabel)
-        return extract(
-            text: text,
-            schema: schema,
-            threshold: threshold,
-            includeConfidence: includeConfidence
-        )
+        let schema = createSchema().classification(
+            task: task, labels: labels, multiLabel: multiLabel, threshold: threshold,
+            prompt: prompt, labelDescriptions: labelDescriptions, examples: examples)
+        return extract(text: text, schema: schema, threshold: threshold,
+                       includeConfidence: includeConfidence, maxLen: maxLen)
+    }
+
+    /// Classify text against several tasks at once (Python engine.py:1166 — `tasks` dict).
+    /// Each task becomes a top-level key in the result.
+    public func classifyText(
+        text: String,
+        tasks: [ClassificationTask],
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        maxLen: Int? = nil
+    ) -> [String: Any] {
+        let schema = createSchema()
+        for task in tasks {
+            schema.classification(
+                task: task.task, labels: task.labels, multiLabel: task.multiLabel,
+                threshold: task.threshold, prompt: task.prompt,
+                labelDescriptions: task.labelDescriptions, examples: task.examples)
+        }
+        return extract(text: text, schema: schema, threshold: threshold,
+                       includeConfidence: includeConfidence, maxLen: maxLen)
     }
 
     /// Extract relations from text
@@ -420,7 +478,8 @@ public class GLiNER2 {
         relationTypes: [String],
         threshold: Float = 0.5,
         includeConfidence: Bool = false,
-        includeSpans: Bool = false
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
     ) -> [String: Any] {
         let schema = createSchema().relations(relationTypes)
         return extract(
@@ -428,7 +487,165 @@ public class GLiNER2 {
             schema: schema,
             threshold: threshold,
             includeConfidence: includeConfidence,
-            includeSpans: includeSpans
+            includeSpans: includeSpans,
+            maxLen: maxLen
+        )
+    }
+
+    /// Batch extract with one schema **per text** (Python engine.py:358 — schemas may be a
+    /// list matching the texts). Each text is independent, so this is exactly the per-text
+    /// results Python's list-of-schemas path produces. A single dict or list of dicts is
+    /// handled by wrapping with `Schema.fromDict`.
+    ///
+    /// - Precondition: `schemas.count == texts.count`.
+    public func batchExtract(
+        texts: [String],
+        schemas: [Schema],
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
+    ) -> [[String: Any]] {
+        precondition(schemas.count == texts.count,
+                     "schemas count (\(schemas.count)) must equal texts count (\(texts.count))")
+        return zip(texts, schemas).map { text, schema in
+            extract(text: text, schema: schema, threshold: threshold,
+                    includeConfidence: includeConfidence, includeSpans: includeSpans, maxLen: maxLen)
+        }
+    }
+
+    // MARK: - JSON Extraction (field-spec mini-language)
+
+    /// Parsed pieces of one `extractJson` field spec.
+    public struct JSONFieldSpec: Equatable {
+        public let name: String
+        public let dtype: String
+        public let choices: [String]?
+        public let description: String?
+    }
+
+    /// Parse a single field spec of the form `name::dtype::[a|b]::desc` (Python
+    /// engine.py:1139-1220). Parts after the name are matched by shape, not strict
+    /// position, so any of dtype / choices / description may be omitted or reordered:
+    /// `[a|b|c]` is choices, `str`/`list` is the dtype, anything else is the description.
+    /// A bare `name` defaults to a single-value (`str`) field with no choices.
+    public static func parseJSONFieldSpec(_ spec: String) -> JSONFieldSpec {
+        let parts = spec.components(separatedBy: "::")
+        let name = parts[0].trimmingCharacters(in: .whitespaces)
+        var dtype = "str"
+        var choices: [String]?
+        var description: String?
+        for raw in parts.dropFirst() {
+            let part = raw.trimmingCharacters(in: .whitespaces)
+            if part.hasPrefix("[") && part.hasSuffix("]") {
+                choices = String(part.dropFirst().dropLast())
+                    .components(separatedBy: "|")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+            } else if part == "str" || part == "list" {
+                dtype = part
+            } else if !part.isEmpty {
+                description = part
+            }
+        }
+        return JSONFieldSpec(name: name, dtype: dtype, choices: choices, description: description)
+    }
+
+    /// Build a one-structure schema from field specs in the mini-language.
+    private func jsonSchema(name: String, fields: [String]) -> Schema {
+        let builder = createSchema().structure(name)
+        for spec in fields {
+            let parsed = Self.parseJSONFieldSpec(spec)
+            builder.field(parsed.name, dtype: parsed.dtype,
+                          choices: parsed.choices, description: parsed.description)
+        }
+        return builder.done()
+    }
+
+    /// Extract a single JSON-like structure whose fields are given in the
+    /// `name::dtype::[a|b]::desc` mini-language. (Python engine.py:1139-1220)
+    public func extractJson(
+        text: String,
+        name: String,
+        fields: [String],
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
+    ) -> [String: Any] {
+        extract(text: text, schema: jsonSchema(name: name, fields: fields),
+                threshold: threshold, includeConfidence: includeConfidence,
+                includeSpans: includeSpans, maxLen: maxLen)
+    }
+
+    /// Batch JSON extraction. (Python engine.py:1151)
+    public func batchExtractJson(
+        texts: [String],
+        name: String,
+        fields: [String],
+        batchSize: Int = 8,
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
+    ) -> [[String: Any]] {
+        batchExtract(texts: texts, schema: jsonSchema(name: name, fields: fields),
+                     batchSize: batchSize, threshold: threshold,
+                     includeConfidence: includeConfidence, includeSpans: includeSpans, maxLen: maxLen)
+    }
+
+    // MARK: - Batch Convenience Methods
+
+    /// Batch entity extraction — one schema, many texts. (Python engine.py:1074)
+    public func batchExtractEntities(
+        texts: [String],
+        entityTypes: [String],
+        batchSize: Int = 8,
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
+    ) -> [[String: Any]] {
+        batchExtract(
+            texts: texts, schema: createSchema().entities(entityTypes), batchSize: batchSize,
+            threshold: threshold, includeConfidence: includeConfidence,
+            includeSpans: includeSpans, maxLen: maxLen
+        )
+    }
+
+    /// Batch text classification. (Python engine.py:1124)
+    public func batchClassifyText(
+        texts: [String],
+        task: String,
+        labels: [String],
+        multiLabel: Bool = false,
+        batchSize: Int = 8,
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        maxLen: Int? = nil
+    ) -> [[String: Any]] {
+        batchExtract(
+            texts: texts,
+            schema: createSchema().classification(task: task, labels: labels, multiLabel: multiLabel),
+            batchSize: batchSize, threshold: threshold, includeConfidence: includeConfidence,
+            maxLen: maxLen
+        )
+    }
+
+    /// Batch relation extraction. (Python engine.py:1171)
+    public func batchExtractRelations(
+        texts: [String],
+        relationTypes: [String],
+        batchSize: Int = 8,
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
+    ) -> [[String: Any]] {
+        batchExtract(
+            texts: texts, schema: createSchema().relations(relationTypes), batchSize: batchSize,
+            threshold: threshold, includeConfidence: includeConfidence,
+            includeSpans: includeSpans, maxLen: maxLen
         )
     }
 
@@ -744,6 +961,12 @@ public class GLiNER2 {
         guard let config = clsConfig,
               let labels = config["labels"] as? [String] else { return }
 
+        // The result is keyed by `schemaName`, which the caller derives exactly as Python
+        // does — `schemaTokens[2].split(" [DESCRIPTION] ")[0]` (engine.py:535). With a
+        // prompt that key is "task: prompt", matching Python byte-for-byte; do NOT reduce it
+        // to the bare task name (verified against Python — that would diverge).
+        let resultKey = schemaName
+
         let isMultiLabel = config["multi_label"] as? Bool ?? false
         let classThreshold = config["cls_threshold"] as? Float ?? 0.5
         let activation = config["class_act"] as? String ?? "auto"
@@ -802,9 +1025,9 @@ public class GLiNER2 {
             }
 
             if includeConfidence {
-                results[schemaName] = chosen.map { ["label": $0.0, "confidence": $0.1] }
+                results[resultKey] = chosen.map { ["label": $0.0, "confidence": $0.1] }
             } else {
-                results[schemaName] = chosen.map { $0.0 }
+                results[resultKey] = chosen.map { $0.0 }
             }
         } else {
             // Single-label: return the best label
@@ -813,9 +1036,9 @@ public class GLiNER2 {
             let bestProb = probsArr[bestIdx]
 
             if includeConfidence {
-                results[schemaName] = ["label": labels[bestIdx], "confidence": bestProb]
+                results[resultKey] = ["label": labels[bestIdx], "confidence": bestProb]
             } else {
-                results[schemaName] = labels[bestIdx]
+                results[resultKey] = labels[bestIdx]
             }
         }
     }
@@ -1335,22 +1558,37 @@ public class Schema {
         return self
     }
 
-    /// Add classification task
+    /// Add classification task.
+    ///
+    /// - Parameters:
+    ///   - prompt: Optional task prompt, serialized as `task: prompt` (Python `prompt`).
+    ///   - labelDescriptions: Optional per-label descriptions, serialized in label order as
+    ///     `[DESCRIPTION] label: desc` (Python `label_descriptions`).
+    ///   - examples: Optional few-shot `(input, output-label)` pairs, serialized as
+    ///     `[EXAMPLE] input [OUTPUT] output` for examples whose output is a label.
     @discardableResult
     public func classification(
         task: String,
         labels: [String],
         multiLabel: Bool = false,
-        threshold: Float = 0.5
+        threshold: Float = 0.5,
+        prompt: String? = nil,
+        labelDescriptions: [String: String]? = nil,
+        examples: [(input: String, output: String)]? = nil
     ) -> Schema {
-        var classifications = internalSchemaDict["classifications"] as? [[String: Any]] ?? []
-        classifications.append([
+        var config: [String: Any] = [
             "task": task,
             "labels": labels,
             "multi_label": multiLabel,
             "cls_threshold": threshold,
             "true_label": ["N/A"]
-        ])
+        ]
+        if let prompt = prompt { config["prompt"] = prompt }
+        if let labelDescriptions = labelDescriptions { config["label_descriptions"] = labelDescriptions }
+        if let examples = examples { config["examples"] = examples.map { [$0.input, $0.output] } }
+
+        var classifications = internalSchemaDict["classifications"] as? [[String: Any]] ?? []
+        classifications.append(config)
         internalSchemaDict["classifications"] = classifications
         return self
     }
@@ -1377,6 +1615,44 @@ public class Schema {
     /// Build the schema dictionary
     public func build() -> [String: Any] {
         internalSchemaDict
+    }
+
+    // MARK: - Ingestion (Phase 6.3)
+
+    /// The schema as a plain dictionary (the shape `build()` / `fromDict` round-trip on).
+    public func toDict() -> [String: Any] { internalSchemaDict }
+
+    /// The schema as JSON data.
+    public func toJSON() throws -> Data {
+        try JSONSerialization.data(withJSONObject: internalSchemaDict)
+    }
+
+    /// Build a Schema from a raw schema dictionary (the shape `build()` produces).
+    ///
+    /// Per-field/entity metadata (thresholds, dtypes) is not recoverable from a raw dict,
+    /// so it is left empty — matching Python's raw-dict path, where only the call-level
+    /// threshold and default dtype apply. Missing top-level keys are filled with the empty
+    /// defaults so downstream code can index them unconditionally.
+    public static func fromDict(_ dict: [String: Any]) -> Schema {
+        let schema = Schema()
+        var normalized = dict
+        for (key, empty) in Schema().internalSchemaDict where normalized[key] == nil {
+            normalized[key] = empty
+        }
+        schema.internalSchemaDict = normalized
+        return schema
+    }
+
+    /// Build a Schema from JSON data / string.
+    public static func fromJSON(_ data: Data) throws -> Schema {
+        guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GLiNER2Error.invalidConfig("schema JSON must be a top-level object")
+        }
+        return fromDict(dict)
+    }
+
+    public static func fromJSON(_ string: String) throws -> Schema {
+        try fromJSON(Data(string.utf8))
     }
 }
 
@@ -1443,19 +1719,32 @@ public class StructureBuilder {
     /// Finish building and return to schema
     @discardableResult
     public func done() -> Schema {
+        // Structure-parent grouping (Python processor.py:639-651): a second
+        // `.structure(name)` with the same name merges into the first, taking the union
+        // of fields (first-seen order) rather than creating a duplicate schema block.
         var structures = schema.internalSchemaDict["json_structures"] as? [[String: Any]] ?? []
-        structures.append([name: fields])
+        if let existing = structures.firstIndex(where: { $0[name] != nil }) {
+            var mergedFields = structures[existing][name] as? [String: Any] ?? [:]
+            for (key, value) in fields where mergedFields[key] == nil { mergedFields[key] = value }
+            structures[existing][name] = mergedFields
+        } else {
+            structures.append([name: fields])
+        }
         schema.internalSchemaDict["json_structures"] = structures
 
-        // Store field order for this structure (critical for parity with Python)
+        // Field order: append this call's fields not already recorded for the parent.
         var fieldOrders = schema.internalSchemaDict["_field_orders"] as? [String: [String]] ?? [:]
-        fieldOrders[name] = fieldOrder
+        var order = fieldOrders[name] ?? []
+        for field in fieldOrder where !order.contains(field) { order.append(field) }
+        fieldOrders[name] = order
         schema.internalSchemaDict["_field_orders"] = fieldOrders
 
-        // Store descriptions if any were provided
+        // Descriptions: merge into any already recorded for the parent.
         if !descriptions.isEmpty {
             var jsonDescriptions = schema.internalSchemaDict["json_descriptions"] as? [String: [String: String]] ?? [:]
-            jsonDescriptions[name] = descriptions
+            var merged = jsonDescriptions[name] ?? [:]
+            for (key, value) in descriptions { merged[key] = value }
+            jsonDescriptions[name] = merged
             schema.internalSchemaDict["json_descriptions"] = jsonDescriptions
         }
 
