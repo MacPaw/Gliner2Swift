@@ -48,7 +48,22 @@ public struct ExtractorConfig: Codable, Sendable {
     /// Dropout rate for span representation (default: 0.1)
     public let spanDropout: Float
 
+    /// Present when the checkpoint on disk is already int-quantized (an MLX `quantization`
+    /// block in config.json). The loader uses it to build the `QuantizedLinear` structure
+    /// before reading the packed weights.
+    public let quantization: QuantizationConfig?
+
     // MARK: - Counting Layer Types
+
+    /// Affine int-quantization parameters read from config.json's `quantization` block.
+    public struct QuantizationConfig: Codable, Sendable, Equatable {
+        public let groupSize: Int
+        public let bits: Int
+        enum CodingKeys: String, CodingKey {
+            case groupSize = "group_size"
+            case bits
+        }
+    }
 
     public enum CountingLayerType: String, Codable, Sendable {
         case countLSTM = "count_lstm"
@@ -73,7 +88,8 @@ public struct ExtractorConfig: Codable, Sendable {
         hiddenSize: Int = 768,
         vocabSize: Int = 128011,
         maxCount: Int = 20,
-        spanDropout: Float = 0.1
+        spanDropout: Float = 0.1,
+        quantization: QuantizationConfig? = nil
     ) {
         self.modelName = modelName
         self.maxWidth = maxWidth
@@ -83,6 +99,7 @@ public struct ExtractorConfig: Codable, Sendable {
         self.vocabSize = vocabSize
         self.maxCount = maxCount
         self.spanDropout = spanDropout
+        self.quantization = quantization
     }
 
     // MARK: - Loading from HuggingFace config.json
@@ -109,7 +126,8 @@ public struct ExtractorConfig: Codable, Sendable {
             hiddenSize: rawConfig.hiddenSize ?? 768,
             vocabSize: rawConfig.vocabSize ?? 128011,
             maxCount: 20,
-            spanDropout: 0.1
+            spanDropout: 0.1,
+            quantization: rawConfig.quantization
         )
     }
 
@@ -121,6 +139,7 @@ public struct ExtractorConfig: Codable, Sendable {
         let tokenPooling: String?
         let hiddenSize: Int?
         let vocabSize: Int?
+        let quantization: QuantizationConfig?
 
         enum CodingKeys: String, CodingKey {
             case modelName = "model_name"
@@ -129,6 +148,7 @@ public struct ExtractorConfig: Codable, Sendable {
             case tokenPooling = "token_pooling"
             case hiddenSize = "hidden_size"
             case vocabSize = "vocab_size"
+            case quantization
         }
     }
 }

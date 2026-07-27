@@ -324,12 +324,18 @@ public enum DTypePolicy: Sendable {
 /// the single largest tensor in the model, so `includeEmbeddings: false` gives up most of
 /// the memory win (415 -> 341 MB) for no accuracy benefit that has been measured.
 ///
-/// The cost, on the 58-case prediction-parity corpus: **53 cases match Python instead of
-/// 55**. One entity whose confidence sits within a hair of the threshold is dropped, and
-/// one confidence moves 0.021 — just outside the ±0.02 the plan allows for fp16. Both are
-/// borderline decisions rather than wholesale errors, but they are real, and they are why
-/// this is not the default. Re-run `PredictionParityTests` with `GLINER2_QUANTIZE=int8`
-/// against your own corpus before enabling it.
+/// The cost, on the 58-case prediction-parity corpus: **56 cases match Python instead of
+/// 58** — two borderline decisions move (an entity within a hair of the threshold, and a
+/// confidence just outside the ±0.02 fp16 band). Both are borderline rather than wholesale
+/// errors, but they are real, and they are why this is not the default. Re-run
+/// `PredictionParityTests` with `GLINER2_QUANTIZE=int8` against your own corpus first.
+///
+/// This can be applied two ways, which are numerically identical (`OnDiskQuantizationTests`
+/// pins that): at load, by passing `.int8` to `fromPretrained` on an fp16 model; or ahead
+/// of time, by loading a directory that `convert_weights.py --quantize int8` already packed
+/// — `fromPretrained` detects the `quantization` config block and loads it quantized. The
+/// pre-quantized directory is ~234 MB vs the fp16 398 MB and skips the fp16→int8 transient
+/// at load, so it is the better choice for a shipped int8-only app.
 public enum QuantizationPolicy: Sendable, Equatable {
     case none
 
@@ -384,14 +390,20 @@ extension Extractor {
     /// Apply a quantization policy to the encoder. Call after weights are loaded.
     public func quantize(_ policy: QuantizationPolicy) {
         guard case .int8(let includeEmbeddings) = policy else { return }
+        applyEncoderQuantization(bits: 8, groupSize: 64, includeEmbeddings: includeEmbeddings)
+        rebuildCompiledEncoder()
+    }
 
-        MLXNN.quantize(model: encoder, groupSize: 64, bits: 8) { _, module in
+    /// Replace the encoder's `Linear` (and optionally `Embedding`) layers with quantized
+    /// equivalents of the given width. Used both by the runtime `quantize(.int8)` path and,
+    /// at load time, to build the structure a pre-quantized checkpoint's packed weights fill.
+    func applyEncoderQuantization(bits: Int, groupSize: Int, includeEmbeddings: Bool) {
+        MLXNN.quantize(model: encoder, groupSize: groupSize, bits: bits) { _, module in
             module is Linear || (includeEmbeddings && module is Embedding)
         }
         // The relative-position projections are derived from the query/key weights that
         // were just replaced.
         encoder.resetCaches()
-        rebuildCompiledEncoder()
     }
 
     // MARK: - Format Detection
@@ -472,7 +484,19 @@ extension Extractor {
     ///   - dtype: Floating-point policy to apply to the loaded weights
     public func loadWeights(from url: URL, dtype: DTypePolicy = .auto) throws {
         let rawWeights = try loadArrays(url: url)
-        let weights = dtype.apply(to: Extractor.sanitize(weights: rawWeights))
+        let sanitized = Extractor.sanitize(weights: rawWeights)
+
+        // A pre-quantized checkpoint carries packed weights, detectable by `.scales` keys.
+        // Build the quantized structure BEFORE loading so the packed tensors land in
+        // QuantizedLinear/QuantizedEmbedding, and do not cast the packed uint32 / fp16
+        // scales (dtype policy applies only to plain float checkpoints).
+        let isQuantizedCheckpoint = sanitized.keys.contains { $0.hasSuffix(".scales") }
+        if isQuantizedCheckpoint, let q = config.quantization, !isQuantized {
+            let includeEmbeddings = sanitized["encoder.embeddings.word_embeddings.scales"] != nil
+            applyEncoderQuantization(bits: q.bits, groupSize: q.groupSize,
+                                     includeEmbeddings: includeEmbeddings)
+        }
+        let weights = isQuantizedCheckpoint ? sanitized : dtype.apply(to: sanitized)
 
         // Load encoder weights (keys starting with "encoder.")
         encoder.loadWeights(weights, prefix: "encoder")

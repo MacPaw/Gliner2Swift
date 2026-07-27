@@ -154,8 +154,12 @@ public class GLiNER2 {
             throw GLiNER2Error.fileNotFound("model weights")
         }
 
-        // 5. Optional quantization, after the real weights are in place
-        gliner2.model.quantize(quantization)
+        // 5. Runtime quantization, after the real weights are in place — but skip it if the
+        //    checkpoint on disk was already quantized (loadWeights builds and fills the
+        //    quantized structure itself), so a pre-quantized model is not quantized twice.
+        if !gliner2.model.isQuantized {
+            gliner2.model.quantize(quantization)
+        }
 
         // 6. Set to evaluation mode (disables dropout)
         gliner2.model.train(false)

@@ -84,11 +84,15 @@ comparison in one pass.
   from ~416 MB (fp16) to ~254 MB (int8); expect the same shape on device. Accuracy on the
   parity corpus is 53/58 under int8 vs 58/58 at fp16 — two borderline cases move — so int8
   is a memory lever, not free.
-- **The on-disk int8 directory the script produces is a standard MLX quantized model**
-  (packed `.weight`/`.scales`/`.biases` + a `quantization` config block). MLX-Python loads
-  it directly. The Swift package currently loads the **fp16** directory and quantizes at
-  load; loading a pre-quantized directory directly (smaller download) is a small follow-up
-  in `Extractor` — not wired up yet.
+- **The on-disk int8 directory the script produces is now loadable directly** — pass its
+  path to `fromPretrained` and it loads quantized (detected via the `quantization` config
+  block; verified numerically identical to load-time quantization in
+  `OnDiskQuantizationTests`). It is ~234 MB vs the fp16 398 MB and skips the fp16→int8
+  transient at load, so it is the better choice for a **shipped int8-only** app. For this
+  *benchmark* app, though, point `ModelLocator` at the **fp16** directory: that lets the
+  precision toggle compare fp16 against runtime-int8 from a single model. (If you point it
+  at the int8 directory instead, both toggle positions report int8 — you can't un-quantize
+  a packed model.)
 - The benchmark **engine** (`BenchmarkEngine.swift`, `DeviceInfo.swift`) is validated on
   macOS against the real library, including both precisions. The iOS build itself was not
   compiled on the machine that wrote this (the iOS platform runtime wasn't installed
