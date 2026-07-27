@@ -292,6 +292,18 @@ extension DeBERTaEncoder {
         }
     }
 
+    /// Fill every layer's memoized projection and bucket matrix for a given sequence length.
+    ///
+    /// Cheap and idempotent once warm. Call before invoking a compiled forward at a new
+    /// sequence length — see `DisentangledSelfAttention.primeCaches`.
+    public func primeCaches(seqLen: Int) {
+        let normalized = relEmbeddingsLayerNorm(relEmbeddings)
+        MLX.eval(normalized)
+        for layer in layers {
+            layer.attention.primeCaches(seqLen: seqLen, relEmbeddings: normalized)
+        }
+    }
+
     public func loadWeights(_ weights: [String: MLXArray], prefix: String = "") {
         let p = prefix.isEmpty ? "" : "\(prefix)."
 

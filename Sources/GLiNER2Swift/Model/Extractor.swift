@@ -55,6 +55,16 @@ public class Extractor: Module {
     /// Count embedding module (CountLSTMv2 for gliner2-base-v1)
     public let countEmbed: CountLSTMv2
 
+    /// Compiled encoder forward, when enabled.
+    ///
+    /// Deliberately not an `MLXArray`-bearing stored property that `Module` reflection
+    /// would see; a closure is `.other` to reflection. It captures the traced graph, so it
+    /// must be discarded whenever the weights change.
+    private var compiledEncode: (@Sendable (MLXArray, MLXArray) -> MLXArray)?
+
+    /// Whether the caller asked for a compiled encoder, so it can be rebuilt after a load.
+    private var wantsCompiledEncoder = false
+
     /// Initialize Extractor from configuration
     ///
     /// - Parameter config: Model configuration
@@ -128,8 +138,47 @@ public class Extractor: Module {
         attentionMask: MLXArray? = nil,
         outputHiddenStates: Bool = false
     ) -> DeBERTaEncoderOutput {
-        encoder(inputIds, attentionMask: attentionMask, outputHiddenStates: outputHiddenStates)
+        // The compiled path returns only the last hidden state, so anything asking for the
+        // per-layer outputs falls back to the interpreted forward.
+        if let mask = attentionMask, !outputHiddenStates, let compiled = compiledEncode {
+            encoder.primeCaches(seqLen: inputIds.dim(1))
+            return DeBERTaEncoderOutput(
+                lastHiddenState: compiled(inputIds, mask),
+                hiddenStates: []
+            )
+        }
+        return encoder(inputIds, attentionMask: attentionMask, outputHiddenStates: outputHiddenStates)
     }
+
+    // MARK: - Compiled Encoder
+
+    /// Build (or discard) a compiled encoder forward.
+    ///
+    /// `MLX.compile` keeps a per-shape cache, so this only pays off when batches arrive at
+    /// a small set of sequence lengths — see `SchemaTransformer.sequenceLengthBucket`.
+    /// Not `shapeless`: the encoder reads dimensions into Swift constants, which shapeless
+    /// tracing would silently bake in.
+    public func setCompiledEncoderEnabled(_ enabled: Bool) {
+        wantsCompiledEncoder = enabled
+        rebuildCompiledEncoder()
+    }
+
+    /// Rebuild or drop the compiled closure. Every weight-loading path must call this: the
+    /// traced graph captures the memoized relative-position projections as constants, so a
+    /// closure built against the previous weights would keep serving them.
+    func rebuildCompiledEncoder() {
+        guard wantsCompiledEncoder else {
+            compiledEncode = nil
+            return
+        }
+        let encoder = self.encoder
+        compiledEncode = compile(inputs: [encoder], outputs: [encoder]) {
+            (ids: MLXArray, mask: MLXArray) in
+            encoder(ids, attentionMask: mask).lastHiddenState
+        }
+    }
+
+    var isCompiledEncoderEnabled: Bool { compiledEncode != nil }
 
     // MARK: - Span Representation
 
@@ -292,6 +341,35 @@ public enum QuantizationPolicy: Sendable, Equatable {
     public static let int8 = QuantizationPolicy.int8(includeEmbeddings: true)
 }
 
+/// How much GPU memory MLX may hold in its allocator cache.
+///
+/// This is a **process-global** MLX setting, not per-model, which is why the default here
+/// changes nothing: a library should not silently reconfigure the host application's
+/// allocator. Pass a policy explicitly when the process is the model.
+public enum GPUCachePolicy: Sendable {
+    /// Leave MLX's global cache limit exactly as it is. The default.
+    case unchanged
+
+    /// Unbounded on macOS, 256 MB on iOS, where the jetsam limit makes an unbounded
+    /// allocator cache the difference between running and being killed.
+    case platformDefault
+
+    case limit(bytes: Int)
+
+    func apply() {
+        switch self {
+        case .unchanged:
+            return
+        case .platformDefault:
+            #if os(iOS) || os(tvOS) || os(visionOS) || os(watchOS)
+            MLX.Memory.cacheLimit = 256 * 1024 * 1024
+            #endif
+        case .limit(let bytes):
+            MLX.Memory.cacheLimit = bytes
+        }
+    }
+}
+
 extension Extractor {
 
     /// Whether `quantize(_:)` has been applied.
@@ -313,6 +391,7 @@ extension Extractor {
         // The relative-position projections are derived from the query/key weights that
         // were just replaced.
         encoder.resetCaches()
+        rebuildCompiledEncoder()
     }
 
     // MARK: - Format Detection
@@ -400,6 +479,7 @@ extension Extractor {
 
         // Load model-specific weights (spanRep, classifier, countPred, countEmbed)
         loadModelWeights(weights)
+        rebuildCompiledEncoder()
     }
 
     /// Load all weights from separate SafeTensors files (legacy method)
@@ -420,6 +500,7 @@ extension Extractor {
         // Load encoder weights
         let encoderWeights = try dtype.apply(to: loadArrays(url: encoderWeightsUrl))
         encoder.loadWeights(encoderWeights, prefix: "encoder")
+        rebuildCompiledEncoder()
     }
 
     /// Load GLiNER2 model weights (excluding encoder)
@@ -448,6 +529,7 @@ extension Extractor {
     /// - Parameter weights: Dictionary with encoder weights
     public func loadEncoderWeights(_ weights: [String: MLXArray]) {
         encoder.loadWeights(weights, prefix: "encoder")
+        rebuildCompiledEncoder()
     }
 
     /// Load base weights with LoRA adapter merged in.
@@ -475,6 +557,7 @@ extension Extractor {
         let weights = Extractor.sanitize(weights: rawWeights)
         encoder.loadWeights(weights, prefix: "encoder")
         loadModelWeights(weights)
+        rebuildCompiledEncoder()
     }
 
     private func loadMLPWeights(_ mlp: Sequential, weights: [String: MLXArray], prefix: String) {

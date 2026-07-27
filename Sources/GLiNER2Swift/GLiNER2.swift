@@ -63,15 +63,23 @@ public class GLiNER2 {
     ///   - dtype: Floating-point policy for the loaded weights. `.auto` keeps the
     ///     checkpoint's own dtype, which is what the shipped fp16 model wants.
     ///   - quantization: Optional 8-bit encoder quantization. Off by default; `.int8`
-    ///     cuts memory substantially at unchanged predictions (see `QuantizationPolicy`).
+    ///     cuts memory substantially but not for free (see `QuantizationPolicy`).
+    ///   - gpuCache: MLX allocator cache policy. Process-global, so it defaults to
+    ///     `.unchanged`; pass `.platformDefault` in an app that owns the process.
+    ///   - compileEncoder: Trace the encoder forward with `MLX.compile` and bucket-pad
+    ///     sequence lengths so the per-shape cache hits. Off by default — it changes fp16
+    ///     results at the ULP level (see `benchmarks/BASELINE.md`).
     ///   - progressHandler: Optional progress callback for Hub downloads
     /// - Returns: Initialized GLiNER2 model
     public static func fromPretrained(
         _ pathOrRepo: String,
         dtype: DTypePolicy = .auto,
         quantization: QuantizationPolicy = .none,
+        gpuCache: GPUCachePolicy = .unchanged,
+        compileEncoder: Bool = false,
         progressHandler: @Sendable @escaping (Progress) -> Void = { _ in }
     ) async throws -> GLiNER2 {
+        gpuCache.apply()
         // Determine if local path or HuggingFace repo
         let isLocalPath = FileManager.default.fileExists(atPath: pathOrRepo)
 
@@ -152,6 +160,13 @@ public class GLiNER2 {
         // 6. Set to evaluation mode (disables dropout)
         gliner2.model.train(false)
         gliner2.model.freeze()
+
+        // 7. Optional compiled encoder. Bucketed padding comes with it: without stable
+        //    shapes the compile cache misses on nearly every call.
+        if compileEncoder {
+            gliner2.processor.padsSequenceLengthToBuckets = true
+            gliner2.model.setCompiledEncoderEnabled(true)
+        }
 
         return gliner2
     }
@@ -304,16 +319,47 @@ public class GLiNER2 {
             records.append(record)
         }
 
-        // Process in batches
+        // Process in batches, one batch ahead of the decoder.
+        //
+        // Decoding is a long stretch of CPU work — span scanning, string slicing, result
+        // assembly — punctuated by score readbacks. Scheduling the next batch's encoder
+        // before that work starts gives the GPU something to do during it, so a multi-batch
+        // call trends towards max(encode, decode) rather than their sum. Safe only because
+        // nothing in decode reads back before the span scores (Phase 2.1/2.2/2.6): an
+        // earlier blocking readback would sit in front of the queued encode on MLX's
+        // single FIFO stream and absorb exactly the overlap this is buying.
         var allResults: [[String: Any]] = []
 
-        for batchStart in stride(from: 0, to: records.count, by: batchSize) {
-            let batchEnd = min(batchStart + batchSize, records.count)
-            let batchRecords = Array(records[batchStart..<batchEnd])
-            let batch = processor.collateBatch(batchRecords)
+        // Collated one batch ahead, never all at once — a long text list would otherwise
+        // hold every batch's padded tensors at the same time.
+        let ranges = stride(from: 0, to: records.count, by: batchSize)
+            .map { $0 ..< min($0 + batchSize, records.count) }
 
-            let batchResults = extractFromBatch(
-                batch: batch,
+        func collate(_ range: Range<Int>) -> PreprocessedBatch {
+            processor.collateBatch(Array(records[range]))
+        }
+
+        var scheduled: (batch: PreprocessedBatch, hiddenStates: MLXArray)? = nil
+
+        for (index, range) in ranges.enumerated() {
+            let current: (batch: PreprocessedBatch, hiddenStates: MLXArray)
+            if let scheduled {
+                current = scheduled
+            } else {
+                let batch = collate(range)
+                current = (batch, encodeBatch(batch))
+            }
+
+            if index + 1 < ranges.count {
+                let next = collate(ranges[index + 1])
+                scheduled = (next, encodeBatch(next))
+            } else {
+                scheduled = nil
+            }
+
+            let batchResults = decodeBatch(
+                batch: current.batch,
+                hiddenStates: current.hiddenStates,
                 threshold: threshold,
                 metadata: schema.metadata,
                 includeConfidence: includeConfidence,
@@ -395,6 +441,21 @@ public class GLiNER2 {
         return normalized
     }
 
+    /// Run the encoder and queue it, without waiting for the result.
+    ///
+    /// Every CPU-side input the decode path needs (input ids, marker positions, word
+    /// indices) is materialized during tokenization, so nothing downstream reads back
+    /// early and forces the wait; the first real sync is the span-score readback. Dropping
+    /// the `asyncEval` entirely would not overlap anything — MLX schedules nothing until
+    /// something depends on it.
+    private func encodeBatch(_ batch: PreprocessedBatch) -> MLXArray {
+        let hiddenStates = model
+            .encode(batch.inputIds, attentionMask: batch.attentionMask)
+            .lastHiddenState  // [batch, seq_len, hidden]
+        MLX.asyncEval(hiddenStates)
+        return hiddenStates
+    }
+
     private func extractFromBatch(
         batch: PreprocessedBatch,
         threshold: Float,
@@ -403,13 +464,25 @@ public class GLiNER2 {
         includeSpans: Bool
     ) -> [[String: Any]] {
         guard !batch.isEmpty else { return [] }
+        return decodeBatch(
+            batch: batch,
+            hiddenStates: encodeBatch(batch),
+            threshold: threshold,
+            metadata: metadata,
+            includeConfidence: includeConfidence,
+            includeSpans: includeSpans
+        )
+    }
 
-        // 1. Run encoder on full batch
-        let encoderOutput = model.encode(batch.inputIds, attentionMask: batch.attentionMask)
-        let hiddenStates = encoderOutput.lastHiddenState  // [batch, seq_len, hidden]
-
-        // Evaluate to ensure computation is complete
-        MLX.eval(hiddenStates)
+    private func decodeBatch(
+        batch: PreprocessedBatch,
+        hiddenStates: MLXArray,
+        threshold: Float,
+        metadata: SchemaMetadata,
+        includeConfidence: Bool,
+        includeSpans: Bool
+    ) -> [[String: Any]] {
+        guard !batch.isEmpty else { return [] }
 
         var results: [[String: Any]] = []
         let decoder = SpanDecoder(maxWidth: config.maxWidth)

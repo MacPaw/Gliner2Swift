@@ -77,6 +77,28 @@ public class SchemaTransformer {
     /// Whether in training mode
     public var isTraining: Bool = false
 
+    /// Round each batch's padded length up to a fixed set of sizes.
+    ///
+    /// Off by default, because it makes the encoder process tokens nobody asked for. It
+    /// exists for the compiled encoder, whose per-shape cache would otherwise recompile on
+    /// nearly every call — real inputs rarely repeat an exact token count. The extra work
+    /// is close to free at these sizes: a 12x longer sequence only doubles inference time,
+    /// so per-call latency is dominated by fixed cost rather than sequence length.
+    public var padsSequenceLengthToBuckets: Bool = false
+
+    /// Granularity of the padded length when `padsSequenceLengthToBuckets` is on.
+    ///
+    /// Rounding up to a multiple of this rather than to a handful of coarse buckets keeps
+    /// the wasted tokens bounded by `bucketGranularity - 1`. Coarse buckets (64/128/256)
+    /// cost 15 % on batched workloads, where sequence length really does drive the cost.
+    public static var bucketGranularity = 16
+
+    static func sequenceLengthBucket(for length: Int) -> Int {
+        guard length > 0 else { return 0 }
+        let granularity = bucketGranularity
+        return ((length + granularity - 1) / granularity) * granularity
+    }
+
     /// Token ids that stand for a marker token contributing a schema embedding.
     ///
     /// Resolved through the tokenizer rather than assumed, and filtered back through
@@ -602,7 +624,12 @@ public class SchemaTransformer {
             return PreprocessedBatch.empty()
         }
 
-        let maxLen = records.map { $0.inputIds.count }.max() ?? 0
+        let longest = records.map { $0.inputIds.count }.max() ?? 0
+        // Padded positions carry attention mask 0, and the decode path indexes by the
+        // per-record mappings, so extra padding cannot reach the output.
+        let maxLen = padsSequenceLengthToBuckets
+            ? Self.sequenceLengthBucket(for: longest)
+            : longest
         let batchSize = records.count
 
         // Pad input IDs and create attention masks

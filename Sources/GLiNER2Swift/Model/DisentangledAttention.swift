@@ -169,6 +169,39 @@ public class DisentangledSelfAttention: Module {
         cache.reset()
     }
 
+    /// Populate every memo this layer would otherwise fill lazily during a forward pass.
+    ///
+    /// Needed before the forward is traced by `MLX.compile`: the lazy paths call
+    /// `MLX.eval`, which is not legal inside a traced function, and a value materialized
+    /// during tracing would be baked into the compiled graph as a constant.
+    public func primeCaches(seqLen: Int, relEmbeddings: MLXArray) {
+        if cache.relPos?.seqLen != seqLen {
+            let relPos = makeLogBucketPosition(
+                seqLen: seqLen,
+                positionBuckets: positionBuckets,
+                maxPosition: maxPosition
+            )
+            MLX.eval(relPos)
+            cache.relPos = (seqLen, relPos)
+        }
+
+        let numBuckets = relEmbeddings.dim(0)
+        if cache.posKey == nil {
+            let posKey = keyProj(relEmbeddings)
+                .reshaped([numBuckets, numHeads, headDim])
+                .transposed(1, 0, 2)
+            MLX.eval(posKey)
+            cache.posKey = posKey
+        }
+        if cache.posQuery == nil {
+            let posQuery = queryProj(relEmbeddings)
+                .reshaped([numBuckets, numHeads, headDim])
+                .transposed(1, 0, 2)
+            MLX.eval(posQuery)
+            cache.posQuery = posQuery
+        }
+    }
+
     /// Hidden size
     public let hiddenSize: Int
 

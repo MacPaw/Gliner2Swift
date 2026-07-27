@@ -201,7 +201,14 @@ final class PredictionParityTests: XCTestCase {
             print("  quantization:      \(quantization)")
         }
 
-        let model = try await GLiNER2.fromPretrained(modelPath, quantization: quantization)
+        // GLINER2_COMPILE_ENCODER=1 runs the corpus through the compiled encoder, which is
+        // the gate Phase 5.1 has to clear: compile fuses kernels and so changes fp16
+        // rounding, and the corpus is where that either matters or does not.
+        let compileEncoder = ProcessInfo.processInfo.environment["GLINER2_COMPILE_ENCODER"] != nil
+        if compileEncoder { print("  compiled encoder:  on") }
+
+        let model = try await GLiNER2.fromPretrained(
+            modelPath, quantization: quantization, compileEncoder: compileEncoder)
 
         var failures: [String] = []          // unexpected divergence -> test fails
         var expectedFailures: [String] = []  // known divergence, tagged to a plan phase

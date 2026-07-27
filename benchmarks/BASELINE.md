@@ -447,3 +447,122 @@ for any child not declared `@ModuleInfo`. The encoder's six `Linear` properties 
 `DeBERTaEmbeddings.wordEmbeddings` were plain `let`s and are now `@ModuleInfo var`. This
 is the correct declaration for a replaceable submodule regardless of quantization, and it
 composes with the reflection fix in PR12.
+
+---
+
+## PR13 (Phase 5.1 + 5.4: compiled encoder, GPU cache policy) — 2026-07-20
+
+`MLX.compile` over the encoder forward, with sequence lengths padded up to a multiple of
+16 so the per-shape compile cache hits. **Off by default** (`compileEncoder: true` to
+enable).
+
+| scenario | interpreted p50 | compiled p50 | change |
+|---|---|---|---|
+| 1-ner-8-labels | 20.02 | 19.71 | -1.5 % |
+| 2-mixed-schema | 25.62 | **24.25** | **-5.3 %** |
+| 3-long-text | 41.79 | **40.14** | **-3.9 %** |
+| 4-batch-32 | 222.43 | **217.34** | -2.3 % |
+
+Corpus: **55/58, identical to the interpreted path**, so compile's kernel fusion changes
+fp16 rounding without moving a single prediction. Costs: cold start 428 -> 444 ms (tracing
+each new shape) and peak memory +4 to +35 MB.
+
+### Bucket granularity is the whole story
+
+The plan suggested coarse buckets — {64, 128, 256, 384, 512}. Measured, those give:
+
+| scenario | coarse buckets | multiples of 16 |
+|---|---|---|
+| 1-ner-8-labels | 19.39 | 19.71 |
+| 2-mixed-schema | 23.79 | 24.25 |
+| 3-long-text | 40.07 | 40.14 |
+| 4-batch-32 | **256.50 (+15.3 %)** | **217.34 (-2.3 %)** |
+
+Coarse buckets are slightly better on single texts and catastrophic on batches. The
+batch-32 texts are ~40 tokens; rounding to 64 makes the encoder chew 60 % more tokens, and
+a batch of 8 is large enough that sequence length genuinely drives cost. Single-text calls
+do not care because they are dominated by fixed per-call cost — the same asymmetry that has
+run through this whole effort, now cutting the other way. Rounding to a multiple of 16
+caps the waste at 15 tokens and every scenario improves.
+
+### Why it stays opt-in
+
+The win is 1.5-5 %, with no measured accuracy cost. Against that: bucket padding changes
+batching behaviour and memory, and a workload with highly variable lengths pays a trace
+for each new shape (32 possible shapes per batch size at this granularity). That is a
+reasonable trade for a server loop with a stable input profile and a bad one for
+occasional one-off calls, so the caller chooses.
+
+Priming was the prerequisite. The relative-position caches populate lazily inside the
+forward and call `MLX.eval` while doing it, which cannot happen inside a traced function —
+so `primeCaches(seqLen:)` fills them beforehand, and the compiled closure is discarded and
+rebuilt on every weight-loading path, since the trace captures those projections as
+constants.
+
+### 5.4 GPU cache policy
+
+`GPUCachePolicy` on `fromPretrained`, defaulting to `.unchanged`. `MLX.Memory.cacheLimit`
+is process-global, so a library silently reconfiguring the host application's allocator
+would be wrong; `.platformDefault` (256 MB on iOS, unbounded on macOS) is available for
+apps that own the process.
+
+### 5.2 and 5.3 — not implemented, with reasons
+
+**5.3 parallel CPU preprocessing** is not worth doing here. Two independent measurements
+in this effort (PR5's tokenizer memo and CPU-side input IDs, both ~1 %) established that
+CPU preprocessing is not on the critical path; parallelising ~1 % of the work across
+threads cannot pay for the complexity of making the schema cache thread-safe.
+
+**5.2 batch pipelining** remains genuinely promising and unmeasured — its precondition
+(no blocking readback early in decode) is now satisfied by 2.1/2.2/2.6. It is the main
+remaining item in the plan's perf phases.
+
+---
+
+## PR14 (Phase 2.6 + 5.2: asyncEval after the encoder, batch pipelining) — 2026-07-20
+
+| scenario | PR13 p50 | 2.6 only | 2.6 + 5.2 |
+|---|---|---|---|
+| 1-ner-8-labels | 20.02 | **19.37** | 19.29 |
+| 2-mixed-schema | 25.62 | **24.55** | 24.80 |
+| 3-long-text | 41.79 | **41.25** | 41.15 |
+| 4-batch-32 | 222.43 | 219.29 | **214.69** |
+
+211 tests pass; corpus 55/58 both with and without the compiled encoder.
+
+**2.6 is one line and pays across every scenario** (-1.4 % to -4.2 %). Replacing the
+blocking `eval` after the encoder with `asyncEval` lets the CPU build the decode graphs
+while the GPU is still encoding. It only became safe once every CPU-side input the decode
+path needs was materialized during tokenization (2.3, 3.5) — any earlier readback would
+have absorbed the overlap.
+
+**5.2 is worth much less than the plan expected.** Pipelining the next batch's encode
+ahead of the current batch's decode gives **-1.8 %** on batch-32 (219.3 -> 214.7,
+reproducible across three runs), not the `max(encode, decode)` instead of `sum` the plan
+projected. Two reasons: decode's CPU stretch is smaller relative to encode than assumed,
+and MLX's single FIFO stream puts the next encode *ahead* of this batch's own decode
+kernels, so part of what is gained in overlap is given back in queueing.
+
+It also costs peak memory: 517 -> 558 MB on batch-32, from a second encoder pass being in
+flight. Kept because the throughput gain is real and reproducible, but a caller under
+memory pressure with a batch workload should know the trade exists. Batches are collated
+one ahead rather than all up front, so a long text list does not hold every batch's padded
+tensors at once.
+
+### Where the effort ended up
+
+Cumulative since the Phase 0 baseline, default configuration (fp16, no quantization, no
+compiled encoder):
+
+| scenario | Phase 0 | now | improvement |
+|---|---|---|---|
+| 1-ner-8-labels | 32.18 | **19.29** | **-40.1 %** |
+| 2-mixed-schema | 41.89 | **24.80** | **-40.8 %** |
+| 3-long-text | 76.25 | **41.15** | **-46.0 %** |
+| 4-batch-32 | 340.85 | **214.69** | **-37.0 %** |
+
+Opt-in on top of that: the compiled encoder (a further 1.5-5 %, no accuracy cost) and
+8-bit quantization (active memory 415 -> 253 MB, at two borderline corpus cases).
+
+Prediction parity has been 55/58 at every single step, and the three failures are the same
+non-ASCII tokenizer cases that predate this work.

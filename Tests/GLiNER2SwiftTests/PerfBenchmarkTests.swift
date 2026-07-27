@@ -129,7 +129,11 @@ final class PerfBenchmarkTests: XCTestCase {
 
         // Scenario 5 first: cold start is only meaningful before anything is warm.
         let coldStart = DispatchTime.now().uptimeNanoseconds
-        let model = try await GLiNER2.fromPretrained(Self.modelPath)
+        // GLINER2_COMPILE_ENCODER=1 measures the Phase 5.1 configuration (compiled
+        // encoder + bucket-padded sequence lengths) through the same scenarios.
+        let compileEncoder = ProcessInfo.processInfo.environment["GLINER2_COMPILE_ENCODER"] != nil
+        let model = try await GLiNER2.fromPretrained(
+            Self.modelPath, compileEncoder: compileEncoder)
         let firstCall = model.extractEntities(text: Self.denseText, entityTypes: Self.nerLabels)
         let coldMs = Double(DispatchTime.now().uptimeNanoseconds - coldStart) / 1_000_000
         XCTAssertFalse(firstCall.isEmpty)
