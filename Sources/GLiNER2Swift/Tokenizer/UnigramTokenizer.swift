@@ -51,6 +51,20 @@ public final class UnigramTokenizer: @unchecked Sendable {
     /// positions (in practice every special token starts with "[").
     private let specialTokenFirstChars: Set<Character>
 
+    /// The `[UNK]` piece, and how strongly Viterbi avoids it.
+    ///
+    /// The checkpoint declares `unk_id: 3` and `byte_fallback: false`, so a character no
+    /// piece covers is a single unknown token — NOT a run of `<0xNN>` byte pieces, which
+    /// is what this tokenizer used to emit. The difference is not cosmetic: three
+    /// fullwidth letters became nine byte tokens instead of one `[UNK]`, and every word
+    /// position downstream shifted.
+    private let unknownToken: String
+    private let minimumPieceScore: Float
+
+    /// Matches SentencePiece's unknown penalty, applied on top of the worst piece score so
+    /// that any real segmentation outranks an unknown one.
+    private static let unknownPenalty: Float = -10.0
+
     /// Upper bound on the length of any vocabulary token, in Characters.
     ///
     /// Viterbi's inner loop tries every substring up to this length; the bound was
@@ -133,6 +147,7 @@ public final class UnigramTokenizer: @unchecked Sendable {
         var vocab: [String: (id: Int, score: Float)] = [:]
         var idToToken: [Int: String] = [:]
         var longestPiece = 1
+        var lowestScore = Float.greatestFiniteMagnitude
 
         for (idx, entry) in vocabArray.enumerated() {
             guard entry.count >= 2,
@@ -157,6 +172,7 @@ public final class UnigramTokenizer: @unchecked Sendable {
             // tokens. It can only over-estimate the Character length, so the Viterbi bound
             // stays correct — just marginally loose for multi-byte pieces.
             longestPiece = Swift.max(longestPiece, token.utf8.count)
+            lowestScore = Swift.min(lowestScore, score)
         }
 
         // Parse added_tokens for special tokens
@@ -183,6 +199,10 @@ public final class UnigramTokenizer: @unchecked Sendable {
         self.vocab = vocab
         self.specialTokenFirstChars = Set(specialTokenSet.compactMap { $0.first })
         self.maxPieceLength = longestPiece
+        self.minimumPieceScore = lowestScore.isFinite ? lowestScore : 0
+        // `unk_id` from the model section, resolved to its piece string.
+        let unkId = (model["unk_id"] as? Int) ?? 3
+        self.unknownToken = idToToken[unkId] ?? "[UNK]"
         self.idToToken = idToToken
         self.specialTokens = specialTokenSet
         self.specialTokenToId = tokenToId
@@ -245,10 +265,14 @@ public final class UnigramTokenizer: @unchecked Sendable {
     public func tokenize(_ text: String) -> [String] {
         guard !text.isEmpty else { return [] }
 
-        // Apply the normalizer chain (whitespace collapse, NFC, right-strip). The leading
-        // whitespace trim is retained from the previous behaviour: preTokenize splits on
-        // whitespace and drops empties, so it cannot change the token stream.
-        let normalized = normalize(text.trimmingCharacters(in: .whitespaces))
+        // Apply the normalizer chain (whitespace collapse, NFC, right-strip) and nothing
+        // else. There used to be a `trimmingCharacters(in: .whitespaces)` here, which is
+        // not something the reference normalizer does — and `CharacterSet.whitespaces`
+        // contains U+200B ZERO WIDTH SPACE even though `Character.isWhitespace` does not,
+        // so a word consisting of a zero-width space was trimmed to nothing and vanished
+        // from the token stream entirely. `normalize`'s right-strip uses the Character
+        // property and has the semantics the reference tokenizer expects.
+        let normalized = normalize(text)
         guard !normalized.isEmpty else { return [] }
 
         // Pre-tokenize: split into words (whitespace only, matches Python Metaspace)
@@ -395,9 +419,14 @@ public final class UnigramTokenizer: @unchecked Sendable {
 
             let char = text[i]
 
-            // Split ONLY on whitespace (Metaspace behavior)
-            // Punctuation stays attached to the word
-            if char.isWhitespace {
+            // Split ONLY on the ASCII space, which is all the Metaspace pre-tokenizer
+            // splits on: it substitutes U+2581 for " " and breaks there. Testing
+            // `isWhitespace` instead also broke on NBSP, U+2009 and friends — and worse,
+            // *dropped* them, where the reference tokenizer keeps them in the piece
+            // stream and resolves them to [UNK]. `normalize` has already reduced every
+            // run of real whitespace, and every tab/newline, to a single space.
+            // Punctuation stays attached to the word.
+            if char == " " {
                 if !currentWord.isEmpty {
                     words.append(currentWord)
                     currentWord = ""
@@ -457,11 +486,16 @@ public final class UnigramTokenizer: @unchecked Sendable {
                     }
                 }
             }
-        }
 
-        // If no valid tokenization found, fall back to character-level
-        if dp[n] == -Float.infinity {
-            return fallbackTokenize(word)
+            // A character no piece covers becomes [UNK]. Priced below the worst real
+            // piece, so it is only ever taken when nothing else reaches this position —
+            // never in preference to a genuine (if unlikely) segmentation.
+            let unkPosition = i + 1
+            let unkScore = dp[i] + Self.unknownPenalty + minimumPieceScore
+            if unkScore > dp[unkPosition] {
+                dp[unkPosition] = unkScore
+                parent[unkPosition] = (i, unknownToken)
+            }
         }
 
         // Backtrack to recover tokens
@@ -469,38 +503,22 @@ public final class UnigramTokenizer: @unchecked Sendable {
         var pos = n
         while pos > 0 {
             guard let (prevPos, token) = parent[pos] else {
-                // This shouldn't happen if dp[n] > -inf
-                return fallbackTokenize(word)
+                // Unreachable: the [UNK] edge above connects every position to the next.
+                return chars.map(String.init)
             }
             tokens.append(token)
             pos = prevPos
         }
 
-        return tokens.reversed()
-    }
-
-    /// Fallback tokenization for unknown words
-    ///
-    /// Encodes each character as UTF-8 bytes mapped to control tokens
-    private func fallbackTokenize(_ word: String) -> [String] {
-        var tokens: [String] = []
-
-        for char in word {
-            // Check if single character is in vocab
-            let charStr = String(char)
-            if vocab[charStr] != nil {
-                tokens.append(charStr)
-            } else {
-                // Encode as UTF-8 bytes -> control tokens
-                let utf8Bytes = charStr.utf8
-                for byte in utf8Bytes {
-                    let controlToken = String(format: "<0x%02X>", byte)
-                    tokens.append(controlToken)
-                }
-            }
+        // Collapse runs of [UNK] into one, matching the reference tokenizer: a word of
+        // three unknown characters produces a single [UNK], not three.
+        var fused: [String] = []
+        fused.reserveCapacity(tokens.count)
+        for token in tokens.reversed() {
+            if token == unknownToken, fused.last == unknownToken { continue }
+            fused.append(token)
         }
-
-        return tokens
+        return fused
     }
 
     // MARK: - Decoding

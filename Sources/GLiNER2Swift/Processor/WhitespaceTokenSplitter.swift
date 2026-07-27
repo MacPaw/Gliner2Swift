@@ -47,11 +47,18 @@ public struct WhitespaceTokenSplitter: Sendable {
     /// 4. Words: word-word_word
     /// 5. Single characters: any non-whitespace
     private static let pattern: NSRegularExpression = {
+        // `\w` is spelled out rather than used directly. ICU defines it to include
+        // `\p{M}` (combining marks), Python's `re` does not — it is alphanumerics per
+        // `str.isalnum()` plus underscore. On decomposed text that one difference splits
+        // words differently: "montre" + U+0301 + "al" is one word to ICU and three to
+        // Python, which shifts every character offset after the first accent. The class
+        // below is Python's definition; for ASCII it is identical to `\w`.
+        let word = "[\\p{L}\\p{Nl}\\p{No}\\p{Nd}_]"
         let patternString = """
         (?:https?://[^\\s]+|www\\.[^\\s]+)\
         |[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}\
         |@[a-z0-9_]+\
-        |\\w+(?:[-_]\\w+)*\
+        |\(word)+(?:[-_]\(word)+)*\
         |\\S
         """
         return try! NSRegularExpression(

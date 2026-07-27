@@ -566,3 +566,40 @@ Opt-in on top of that: the compiled encoder (a further 1.5-5 %, no accuracy cost
 
 Prediction parity has been 55/58 at every single step, and the three failures are the same
 non-ASCII tokenizer cases that predate this work.
+
+---
+
+## PR15 (tokenizer parity: 58/58) — 2026-07-21
+
+Not a performance change — benchmarks are unchanged within noise (19.20 / 24.64 / 41.45 /
+214.61) — but it closes the parity gate this whole effort was measured against.
+
+**Prediction parity is now 58/58 against Python. The expected-failure list is empty.**
+
+The three long-standing non-ASCII failures were two bugs, not three:
+
+**Unknown characters were byte-falling-back.** The checkpoint declares `unk_id: 3` and
+`byte_fallback: false`, but `fallbackTokenize` encoded any uncovered character as `<0xNN>`
+UTF-8 byte pieces. `ＡＢＣ Corp hired Ｊｏｈｎ Ｓｍｉｔｈ in Ｔｏｋｙｏ.` became 59 tokens where Python
+produces 12 — every word position downstream shifted, so Swift found only `Corp` where
+Python finds three entities. The Viterbi lattice now carries an `[UNK]` edge at every
+position, priced below the worst real piece so it is only taken when nothing else reaches
+that position, and consecutive unknowns fuse into one token. Whole-word fallback is gone.
+
+**Two whitespace definitions were wrong, in opposite directions.** `preTokenize` split on
+`Character.isWhitespace`, which breaks on NBSP — the Metaspace pre-tokenizer splits on the
+ASCII space alone, and the reference keeps an NBSP in the stream as `[UNK]`. And
+`tokenize` began with `trimmingCharacters(in: .whitespaces)`, where Foundation's
+`CharacterSet.whitespaces` **contains U+200B** even though `Character.isWhitespace` does
+not — so a word consisting of one zero-width space was trimmed to nothing and disappeared
+from the input entirely. Worth remembering that those two Foundation APIs disagree.
+
+**And one genuine regex-engine difference.** ICU's `\w` includes `\p{M}`; Python's `re`
+`\w` is `str.isalnum()` plus underscore, which excludes combining marks. On decomposed
+text `"montre" + U+0301 + "al"` is one word to ICU and three to Python, shifting every
+character offset after the first accent. The splitter now spells the class out as
+`[\p{L}\p{Nl}\p{No}\p{Nd}_]`, identical to `\w` for ASCII.
+
+Three tokenizer-level regression tests pin the id sequences against values taken from
+`AutoTokenizer.from_pretrained("fastino/gliner2-base-v1")`, so a future change breaks at
+the tokenizer rather than four layers up in the corpus. 214 tests pass.

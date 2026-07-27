@@ -46,22 +46,13 @@ final class PredictionParityTests: XCTestCase {
     //   PR2 (Phase 1.1 + 1.4)   45 passing, 13 expected failures
     //   PR3 (tokenizer offsets) 45 passing, 13 expected failures
     //   PR4 (Phase 1.3 + 1.5)   55 passing,  3 expected failures
+    //   PR15 (tokenizer parity)  58 passing,  0 expected failures
 
-    private static let expectedFailures: [String: String] = [
-        // Non-ASCII residue. NOT a charsmap problem: Python's inference tokenizer is a
-        // fast DebertaV2Tokenizer normalizing with Replace+NFC+Strip, not the
-        // Precompiled charsmap the model directory's tokenizer.json declares (see
-        // UnigramTokenizer.normalize). After the scalar-offset and NFC fixes, Swift's
-        // word segmentation and character offsets match Python EXACTLY for the fullwidth
-        // and NBSP/ZWSP cases; what remains is residual token-id divergence.
-        //
-        // nonascii_nfd_accents additionally segments differently: ICU's \w matches
-        // combining marks, so Swift splits "zoe\u{301}" as one word where Python's `re`
-        // yields "zoe" + "\u{301}". Reconciling the two regex engines is separate work.
-        "nonascii_nfd_accents": "regex \\w semantics (ICU vs Python re) on combining marks",
-        "nonascii_fullwidth": "residual token-id divergence on fullwidth forms",
-        "nonascii_nbsp_zwsp": "residual token-id divergence on zero-width space",
-    ]
+    // Empty, and it must stay that way: every one of the 58 cases matches Python. The
+    // last three fell to the tokenizer fixes described in UnigramTokenizer (single [UNK]
+    // instead of byte fallback, Metaspace splitting on the ASCII space only, no
+    // CharacterSet-based trim) and the `\w` class in WhitespaceTokenSplitter.
+    private static let expectedFailures: [String: String] = [:]
 
     // MARK: - Corpus model
 
@@ -190,7 +181,7 @@ final class PredictionParityTests: XCTestCase {
 
         // Setting GLINER2_QUANTIZE=int8 (or int8-linear) runs the whole corpus against a
         // quantized model. That is the gate Phase 4.4 has to clear before quantization can
-        // be recommended: the same 55 cases must pass, not a hand-picked handful.
+        // be recommended: all 58 cases must still pass, not a hand-picked handful.
         let quantization: QuantizationPolicy
         switch ProcessInfo.processInfo.environment["GLINER2_QUANTIZE"] {
         case "int8": quantization = .int8
