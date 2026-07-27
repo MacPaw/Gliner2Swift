@@ -28,18 +28,19 @@ Swift/MLX implementation of [GLiNER2](https://github.com/fastino-ai/gliner2) - a
 ## Features
 
 - Named Entity Recognition (NER)
-- Text Classification
-- Structured Data Extraction
+- Text Classification (with optional prompts, label descriptions, and few-shot examples)
+- Structured Data Extraction (JSON schemas, including the `name::dtype::[a|b]::desc` field-spec form)
 - Relation Extraction
+- Long-document extraction via automatic chunking, plus `maxLen` truncation
+- Optional int8 encoder quantization (~40% less memory)
 - LoRA adapter loading (merge at load time, zero runtime overhead)
-- Native Apple Silicon support via MLX
-- CPU-first design - no GPU required
+- Native Apple Silicon support via MLX (Metal GPU)
 
 ## Requirements
 
-- macOS 14.0+
+- macOS 14.0+ or iOS 17.0+
 - Swift 5.9+
-- Apple Silicon (M1/M2/M3)
+- Apple Silicon (M1/M2/M3) on macOS; A-series (Metal) on iOS
 
 ## Installation
 
@@ -60,20 +61,24 @@ Or in Xcode: File → Add Package Dependencies → Enter the repository URL.
 ```swift
 import GLiNER2Swift
 
-// Load model (downloads automatically from HuggingFace)
+// Load model (downloads automatically from HuggingFace, or pass a local directory)
 let model = try await GLiNER2.fromPretrained("fastino/gliner2-base-v1")
 
-// Extract entities
+// Extract entities — results come back as a [String: Any] dictionary
 let text = "Tim Cook is CEO of Apple in Cupertino."
-let entities = try model.extractEntities(
-    from: text,
-    labels: ["person", "company", "location"]
+let result = model.extractEntities(
+    text: text,
+    entityTypes: ["person", "company", "location"],
+    includeSpans: true
 )
 
-for entity in entities {
-    print("\(entity.label): \(entity.text) [\(entity.start)-\(entity.end)]")
+if let entities = result["entities"] as? [String: [Any]] {
+    for (label, spans) in entities {
+        for case let span as [String: Any] in spans {
+            print("\(label): \(span["text"]!) [\(span["start"]!)-\(span["end"]!)]")
+        }
+    }
 }
-// Output:
 // person: Tim Cook [0-8]
 // company: Apple [23-28]
 // location: Cupertino [32-41]
@@ -87,22 +92,28 @@ for entity in entities {
 
 ## API Reference
 
+The extraction methods are synchronous (not `throws`) and return a `[String: Any]` result
+dictionary; only `fromPretrained` is `async throws`.
+
 ### Entity Extraction
 
 ```swift
-let entities = try model.extractEntities(
-    from: "Your text here",
-    labels: ["person", "organization", "location"]
+let result = model.extractEntities(
+    text: "Your text here",
+    entityTypes: ["person", "organization", "location"]
 )
+// result["entities"] is [String: [Any]] — label → list of matches
 ```
 
 ### Text Classification
 
 ```swift
-let classification = try model.classifyText(
-    "Great product, highly recommend!",
+let result = model.classifyText(
+    text: "Great product, highly recommend!",
+    task: "sentiment",
     labels: ["positive", "negative", "neutral"]
 )
+// result["sentiment"] == "positive"
 ```
 
 ### Structured Extraction
@@ -112,7 +123,14 @@ let schema = model.createSchema()
     .entities(["person", "company"])
     .classification(task: "sentiment", labels: ["positive", "negative"])
 
-let result = try model.extract(from: text, schema: schema)
+let result = model.extract(text: text, schema: schema)
+```
+
+### Long Documents
+
+```swift
+// Splits into overlapping word-chunks, remaps spans back to the original text, and merges.
+let result = model.extractEntitiesLong(text: veryLongText, entityTypes: ["person", "company"])
 ```
 
 ## LoRA Adapters
@@ -162,17 +180,19 @@ GLiNER2Swift is a direct port of the Python GLiNER2 implementation, achieving nu
 
 ## Performance
 
-On Apple Silicon (M1/M2/M3):
-- Model loading: ~2 seconds
-- Inference: ~50ms per sentence (varies by length)
+On Apple Silicon (M3 Pro, fp16):
+- Model loading: ~0.4 seconds
+- Inference: ~20ms for a single sentence, scaling with length
 
+Opt-in int8 encoder quantization roughly halves steady-state memory (~415 MB → ~253 MB)
+for a small accuracy trade-off; pass `quantization: .int8` to `fromPretrained`.
 
 ## Work in Progress
 
-This is an active port of the [Python GLiNER2](https://github.com/fastino-ai/gliner2) implementation. The following features are **not yet implemented**:
+This is an active port of the [Python GLiNER2](https://github.com/fastino-ai/gliner2) implementation. Inference is at full prediction parity with the reference. The following are **not yet implemented**:
 
 - **Training loop** - Fine-tuning and training from scratch are not yet supported
-- **Relation extraction** - Schema-based relation extraction between entities
+- **PyTorch `.bin` checkpoints** - Only safetensors weights are loadable (MLX cannot read pickle)
 - **Additional GLiNER models** - Currently only `deberta-v3-base` is supported; other model variants are not yet available
 
 Contributions and PRs are welcome!
