@@ -43,6 +43,6 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         MARKETING_VERSION: "1.0"
         PRODUCT_BUNDLE_IDENTIFIER: com.example.gliner2bench
-        # Personal-team automatic signing, so a project regeneration keeps it.
-        DEVELOPMENT_TEAM: NXXNT7U89C
+        # Set this to your team ID (or configure signing in Xcode after generation).
+        # DEVELOPMENT_TEAM: YOUR_TEAM_ID
         CODE_SIGN_STYLE: Automatic
