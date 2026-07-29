@@ -141,10 +141,12 @@ struct FlowLayout: Layout {
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
-        var rows = layout(subviews, maxWidth: maxWidth)
+        let rows = layout(subviews, maxWidth: maxWidth)
         let height = rows.last.map { $0.y + $0.height } ?? 0
-        rows.removeAll()
-        return CGSize(width: maxWidth == .infinity ? 0 : maxWidth, height: height)
+        // Unconstrained width => everything lands on one row; report that row's natural
+        // extent instead of 0, so horizontal stacks / scroll containers don't collapse us.
+        let naturalWidth = rows.map { $0.items.last.map { $0.x + $0.size.width } ?? 0 }.max() ?? 0
+        return CGSize(width: proposal.width ?? naturalWidth, height: height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {

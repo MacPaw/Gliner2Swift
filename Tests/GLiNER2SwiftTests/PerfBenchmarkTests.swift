@@ -9,8 +9,11 @@
 //   xcodebuild test -scheme GLiNER2Swift -destination 'platform=macOS' \
 //     -only-testing:GLiNER2SwiftTests/PerfBenchmarkTests
 //
-// Model selection (remember the TEST_RUNNER_ prefix when passing through xcodebuild):
-//   TEST_RUNNER_GLINER2_MODEL=/path/to/local/model/dir    (offline, recommended)
+// Model selection. `xcodebuild` does not forward arbitrary env vars to the test host, so
+// prefix them with TEST_RUNNER_ on the command line — xctest strips that prefix before the
+// test process reads them, hence the bare name below:
+//   xcodebuild test ... TEST_RUNNER_GLINER2_MODEL=/path/to/local/model/dir   (offline)
+//   => the process sees GLINER2_MODEL, which is what `modelPath` reads.
 // Defaults to the canonical fp16 snapshot discovered by TestModel, else the fp32 hub id.
 
 import XCTest
