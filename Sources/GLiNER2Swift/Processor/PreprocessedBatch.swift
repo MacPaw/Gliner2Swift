@@ -78,6 +78,30 @@ public struct TransformedRecord {
     /// Original schema dictionary
     public let schema: [String: Any]
 
+    /// Index of the first subword belonging to the text segment.
+    ///
+    /// Equal to `mappedIndices.count` when the record has no text segment at all.
+    public let textStartIndex: Int
+
+    /// For each pooled word, the index of its first subword, relative to `textStartIndex`.
+    ///
+    /// Words that tokenize to no subword at all are omitted, so this array's length is the
+    /// pooled sequence length the decoder sees.
+    public let wordFirstIndices: [Int]
+
+    /// Number of subwords in each pooled word, parallel to `wordFirstIndices`.
+    ///
+    /// A word's subwords are contiguous, so `first ..< first + count` fully describes it.
+    public let wordSubwordCounts: [Int]
+
+    /// Absolute positions of the marker tokens (`[P]`, `[C]`, `[E]`, `[R]`, `[L]`) that
+    /// contribute embeddings, grouped by schema index.
+    ///
+    /// Recorded while the prompt is tokenized so the decode path can gather each schema's
+    /// embeddings with a single `take`, instead of walking every position and looking each
+    /// token id back up in the vocabulary.
+    public let schemaMarkerPositions: [[Int]]
+
     /// Number of schemas
     public var numSchemas: Int {
         schemaTokensList.count
@@ -127,6 +151,26 @@ public struct PreprocessedBatch {
     /// Original schemas for result formatting
     public let originalSchemas: [[String: Any]]
 
+    /// Unpadded input IDs per sample, kept on the CPU.
+    ///
+    /// The IDs are produced as Swift `[Int]` during tokenization and only then uploaded
+    /// into `inputIds`; reading them back off the GPU per sample forced a slice kernel
+    /// plus a blocking sync to recover data the process already had.
+    public let inputIdsCPU: [[Int]]
+
+    /// Index of the first text-segment subword, per sample.
+    public let textStartIndices: [Int]
+
+    /// Per-sample word-pooling indices (see `TransformedRecord.wordFirstIndices`).
+    public let wordFirstIndices: [[Int]]
+
+    /// Per-sample word-pooling subword counts (see `TransformedRecord.wordSubwordCounts`).
+    public let wordSubwordCounts: [[Int]]
+
+    /// Per-sample, per-schema marker-token positions
+    /// (see `TransformedRecord.schemaMarkerPositions`).
+    public let schemaMarkerPositions: [[[Int]]]
+
     /// Batch size
     public var count: Int {
         inputIds.dim(0)
@@ -143,18 +187,9 @@ public struct PreprocessedBatch {
     /// matching Python's approach of using convert_ids_to_tokens(tid) to check
     /// if each token is a special marker token.
     public func getInputIds(for sampleIndex: Int) -> [Int] {
-        guard sampleIndex < originalLengths.count else { return [] }
-        let seqLen = originalLengths[sampleIndex]
-
-        // Extract row from MLXArray and convert to [Int]
-        let row = inputIds[sampleIndex, 0..<seqLen]
-        MLX.eval(row)
-
-        var ids: [Int] = []
-        for i in 0..<seqLen {
-            ids.append(Int(row[i].item(Int32.self)))
-        }
-        return ids
+        guard sampleIndex < inputIdsCPU.count else { return [] }
+        // Free array access: no slice kernel, no GPU sync (see `inputIdsCPU`).
+        return inputIdsCPU[sampleIndex]
     }
 
     /// Move tensors to specific device/stream
@@ -172,7 +207,12 @@ public struct PreprocessedBatch {
             startMappings: startMappings,
             endMappings: endMappings,
             originalTexts: originalTexts,
-            originalSchemas: originalSchemas
+            originalSchemas: originalSchemas,
+            inputIdsCPU: inputIdsCPU,
+            textStartIndices: textStartIndices,
+            wordFirstIndices: wordFirstIndices,
+            wordSubwordCounts: wordSubwordCounts,
+            schemaMarkerPositions: schemaMarkerPositions
         )
     }
 
@@ -191,7 +231,12 @@ public struct PreprocessedBatch {
             startMappings: [],
             endMappings: [],
             originalTexts: [],
-            originalSchemas: []
+            originalSchemas: [],
+            inputIdsCPU: [],
+            textStartIndices: [],
+            wordFirstIndices: [],
+            wordSubwordCounts: [],
+            schemaMarkerPositions: []
         )
     }
 }

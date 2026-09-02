@@ -1,0 +1,11 @@
+{
+  "hidden_size": 768,
+  "max_count": 20,
+  "M": 4,
+  "gold_count": 3,
+  "output_shape": [
+    3,
+    4,
+    768
+  ]
+}

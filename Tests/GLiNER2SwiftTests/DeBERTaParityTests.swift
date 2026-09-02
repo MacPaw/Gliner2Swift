@@ -179,7 +179,9 @@ final class DeBERTaParityTests: XCTestCase {
         let encoder = DeBERTaEncoder(config: config)
 
         let inputIds = MLXArray([1, 2, 3, 4, 5]).reshaped([1, 5])
-        let output = encoder(inputIds)
+        // Per-layer outputs are opt-in since Phase 3.6; this test is one of the few callers
+        // that actually wants them.
+        let output = encoder(inputIds, outputHiddenStates: true)
 
         XCTAssertEqual(output.lastHiddenState.dim(0), 1)  // batch
         XCTAssertEqual(output.lastHiddenState.dim(1), 5)  // seq_len

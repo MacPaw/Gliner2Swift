@@ -1,0 +1,9 @@
+{
+  "text": "Microsoft is based in Seattle, Washington.",
+  "entity_types": [
+    "organization",
+    "location"
+  ],
+  "purpose": "Multiple entity types",
+  "threshold": 0.5
+}

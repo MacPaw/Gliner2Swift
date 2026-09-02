@@ -44,6 +44,47 @@ public struct ExtractedSpan: Sendable, Equatable {
     }
 }
 
+// MARK: - Span Score Buffer
+
+/// One schema's sigmoid span scores, `[instances, fields, rows, width]`, held on the CPU.
+///
+/// The whole tensor is read back once per schema. Slicing it on the GPU per field and per
+/// count-instance instead meant one `asArray` — and so one blocking round trip — for every
+/// (instance, field) pair, to fetch bytes that a single contiguous copy already brings over.
+public struct SpanScoreBuffer {
+    /// Row-major contents, `[instances][fields][rows][width]`.
+    public let values: [Float]
+
+    public let instances: Int
+    public let fields: Int
+    public let rows: Int
+    public let width: Int
+
+    /// Reads `scores` back in a single eval plus contiguous copy.
+    ///
+    /// The `contiguous` call is load-bearing, not tidiness: the einsum that produces these
+    /// scores returns a strided view, and `asArray` on a strided array falls out of its
+    /// `copyBytes` fast path into a Swift loop that walks the source chunk by chunk,
+    /// recomputing the source offset per chunk. Measured at 6 ms per call on a one-sentence
+    /// NER schema — more than the readback itself. One GPU copy kernel avoids all of it.
+    ///
+    /// - Parameter scores: `[instances, fields, rows, width]`, post-sigmoid.
+    public init(_ scores: MLXArray) {
+        precondition(scores.ndim == 4, "Span scores must be [instances, fields, rows, width]")
+        self.instances = scores.dim(0)
+        self.fields = scores.dim(1)
+        self.rows = scores.dim(2)
+        self.width = scores.dim(3)
+        self.values = MLX.contiguous(scores).asArray(Float32.self)
+    }
+
+    /// Flat offset of `[instance][field][row][0]`.
+    @inline(__always)
+    func rowStart(instance: Int, field: Int, row: Int) -> Int {
+        (((instance * fields) + field) * rows + row) * width
+    }
+}
+
 // MARK: - Span Decoder
 
 /// Decoder for extracting spans from model scores.
@@ -66,7 +107,10 @@ public struct SpanDecoder {
     /// Find valid spans above threshold.
     ///
     /// - Parameters:
-    ///   - scores: Span scores for a single field [textLen, maxWidth] (after sigmoid)
+    ///   - scores: The schema's score buffer
+    ///   - instance: Count instance to read
+    ///   - field: Field to read
+    ///   - rowOffset: First row of the text region (the prefix rows precede it)
     ///   - threshold: Confidence threshold
     ///   - textLen: Number of text tokens
     ///   - text: Original text
@@ -74,7 +118,10 @@ public struct SpanDecoder {
     ///   - endMap: End character positions for each token
     /// - Returns: List of extracted spans (text, confidence, charStart, charEnd)
     public func findSpans(
-        scores: MLXArray,
+        scores: SpanScoreBuffer,
+        instance: Int,
+        field: Int,
+        rowOffset: Int,
         threshold: Float,
         textLen: Int,
         text: String,
@@ -83,18 +130,21 @@ public struct SpanDecoder {
     ) -> [ExtractedSpan] {
         var spans: [ExtractedSpan] = []
 
-        // Get dimensions
-        let seqLen = scores.dim(0)
-        let widthDim = scores.dim(1)
+        let widthDim = scores.width
+        let rowCount = min(textLen, scores.rows - rowOffset)
+        guard rowCount > 0 else { return [] }
 
-        // MLX doesn't have argWhere, so we iterate manually
-        // First, evaluate the scores to Swift-accessible values
-        MLX.eval(scores)
+        // Hoisted out of the candidate loop: `text.count` and index walks are O(n) each,
+        // and findSpans runs once per field per count-instance over the same text.
+        let scalars = text.unicodeScalars
+        let scalarCount = scalars.count
 
         // Iterate over all positions
-        for start in 0..<seqLen {
+        let base = scores.rowStart(instance: instance, field: field, row: rowOffset)
+        for start in 0..<rowCount {
+            let rowBase = base + start * widthDim
             for width in 0..<widthDim {
-                let score = Float(scores[start, width].item(Float32.self))
+                let score = scores.values[rowBase + width]
 
                 guard score >= threshold else { continue }
 
@@ -108,11 +158,15 @@ public struct SpanDecoder {
                 let charStart = startMap[start]
                 let charEnd = endMap[end - 1]
 
-                // Extract text span
-                guard charStart < text.count && charEnd <= text.count else { continue }
-                let startIdx = text.index(text.startIndex, offsetBy: charStart)
-                let endIdx = text.index(text.startIndex, offsetBy: charEnd)
-                let spanText = String(text[startIdx..<endIdx]).trimmingCharacters(in: .whitespaces)
+                // Slice in UNICODE SCALARS, matching the offsets the splitter produced and
+                // Python's codepoint-based character offsets. Indexing by Character would
+                // land in the wrong place whenever the text contains multi-scalar grapheme
+                // clusters (decomposed accents, emoji sequences).
+                guard charStart < scalarCount && charEnd <= scalarCount else { continue }
+                let startIdx = scalars.index(scalars.startIndex, offsetBy: charStart)
+                let endIdx = scalars.index(scalars.startIndex, offsetBy: charEnd)
+                let spanText = String(String.UnicodeScalarView(scalars[startIdx..<endIdx]))
+                    .trimmingCharacters(in: .whitespaces)
 
                 guard !spanText.isEmpty else { continue }
 
@@ -193,36 +247,6 @@ public struct SpanDecoder {
         }
     }
 
-    // MARK: - Score Slicing
-
-    /// Get text span scores (last textLen positions).
-    ///
-    /// - Parameters:
-    ///   - scores: Full span scores [count, fields, totalLen, maxWidth]
-    ///   - textLen: Number of text tokens
-    /// - Returns: Text span scores [count, fields, textLen, maxWidth]
-    public func getTextSpanScores(_ scores: MLXArray, textLen: Int) -> MLXArray {
-        // scores[:, :, -textLen:]
-        let totalLen = scores.dim(2)
-        let startIdx = totalLen - textLen
-        return scores[0..., 0..., startIdx...]
-    }
-
-    /// Get choice field scores (first positions, before text).
-    ///
-    /// - Parameters:
-    ///   - scores: Full span scores [count, fields, totalLen, maxWidth]
-    ///   - textLen: Number of text tokens
-    /// - Returns: Choice field scores [count, fields, prefixLen, maxWidth]
-    public func getChoiceFieldScores(_ scores: MLXArray, textLen: Int) -> MLXArray {
-        // scores[:, :, :-textLen]
-        let totalLen = scores.dim(2)
-        let prefixLen = totalLen - textLen
-        guard prefixLen > 0 else {
-            return MLXArray.zeros([scores.dim(0), scores.dim(1), 0, scores.dim(3)])
-        }
-        return scores[0..., 0..., 0..<prefixLen]
-    }
 }
 
 // MARK: - Choice Field Decoding
@@ -231,38 +255,59 @@ extension SpanDecoder {
     /// Find choice field value from prefix scores.
     ///
     /// - Parameters:
-    ///   - prefixScores: Scores for prefix tokens [prefixLen, maxWidth]
+    ///   - scores: The schema's score buffer
+    ///   - instance: Count instance to read
+    ///   - field: Field to read
+    ///   - prefixLength: Number of classification-prefix rows, which precede the text rows
     ///   - choices: Available choices
     ///   - textTokens: Prefix text tokens
     ///   - threshold: Confidence threshold
     ///   - dtype: "str" for single value, "list" for multiple
     /// - Returns: Selected choice(s) or nil
     public func decodeChoiceField(
-        prefixScores: MLXArray,
+        scores: SpanScoreBuffer,
+        instance: Int,
+        field: Int,
+        prefixLength: Int,
         choices: [String],
         textTokens: [String],
         threshold: Float,
-        dtype: String
+        dtype: String,
+        includeConfidence: Bool = false
     ) -> Any? {
+        guard prefixLength > 0 else { return nil }
+
+        // Python reads `prefix_scores[idx, 0]` — the width-0 column only.
+        func score(at index: Int) -> Float {
+            scores.values[scores.rowStart(instance: instance, field: field, row: index)]
+        }
+
+        // Choice values carry no character span, so `includeSpans` adds nothing here —
+        // Python emits {"text", "confidence"} for them, never start/end.
+        func format(_ choice: String, _ confidence: Float) -> Any {
+            includeConfidence ? ["text": choice, "confidence": confidence] : choice
+        }
+
         if dtype == "list" {
-            var selected: [(String, Float)] = []
+            var selected: [Any] = []
             var seen: Set<String> = []
 
             for choice in choices {
                 if seen.contains(choice) { continue }
 
                 if let idx = findChoiceIndex(choice, in: textTokens) {
-                    guard idx < prefixScores.dim(0) else { continue }
+                    guard idx < prefixLength else { continue }
 
-                    let score = Float(prefixScores[idx, 0].item(Float32.self))
-                    if score >= threshold {
-                        selected.append((choice, score))
+                    let value = score(at: idx)
+                    if value >= threshold {
+                        selected.append(format(choice, value))
                         seen.insert(choice)
                     }
                 }
             }
 
-            return selected.isEmpty ? nil : selected.map { $0.0 }
+            // Python returns the (possibly empty) list rather than dropping the key.
+            return selected
         } else {
             // dtype == "str": return best match
             var best: String? = nil
@@ -270,18 +315,18 @@ extension SpanDecoder {
 
             for choice in choices {
                 if let idx = findChoiceIndex(choice, in: textTokens) {
-                    guard idx < prefixScores.dim(0) else { continue }
+                    guard idx < prefixLength else { continue }
 
-                    let score = Float(prefixScores[idx, 0].item(Float32.self))
-                    if score > bestScore {
-                        bestScore = score
+                    let value = score(at: idx)
+                    if value > bestScore {
+                        bestScore = value
                         best = choice
                     }
                 }
             }
 
             if let best = best, bestScore >= threshold {
-                return best
+                return format(best, bestScore)
             }
             return nil
         }

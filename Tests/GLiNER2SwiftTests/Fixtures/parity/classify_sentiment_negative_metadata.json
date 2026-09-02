@@ -1,0 +1,11 @@
+{
+  "text": "This product is terrible. I hate it.",
+  "task": "sentiment",
+  "labels": [
+    "positive",
+    "negative",
+    "neutral"
+  ],
+  "purpose": "Negative sentiment",
+  "threshold": 0.5
+}

@@ -1,0 +1,10 @@
+{
+  "text": "Contact john@email.com or call 555-1234.",
+  "structure_name": "contact",
+  "fields": [
+    "email",
+    "phone"
+  ],
+  "purpose": "Contact info extraction",
+  "threshold": 0.5
+}

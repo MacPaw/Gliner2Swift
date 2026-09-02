@@ -51,14 +51,19 @@ public enum SafeTensorsError: Error, LocalizedError {
 ///
 /// - Parameters:
 ///   - repoId: HuggingFace repository ID (e.g., "fastino/gliner2-base-v1")
-///   - hub: HubApi instance (defaults to standard HubApi)
+///   - hfToken: Optional HuggingFace token for gated/private repos. Falls back to the
+///     `HF_TOKEN`/`HUGGING_FACE_HUB_TOKEN` environment variable when nil.
+///   - hub: HubApi instance (defaults to one built with `hfToken`)
 ///   - progressHandler: Optional progress callback
 /// - Returns: Local URL of the downloaded model directory
 public func downloadModelDirectory(
     repoId: String,
-    hub: HubApi = HubApi(),
+    hfToken: String? = nil,
+    hub: HubApi? = nil,
     progressHandler: @Sendable @escaping (Progress) -> Void = { _ in }
 ) async throws -> URL {
+    // Build a token-carrying HubApi unless the caller supplied their own.
+    let hub = hub ?? HubApi(hfToken: hfToken)
     let repo = Hub.Repo(id: repoId)
     let filePatterns = [
         "*.safetensors", "config.json",

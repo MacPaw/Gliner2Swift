@@ -21,14 +21,7 @@ import XCTest
 final class DescriptionParityTests: XCTestCase {
 
     func testEntityDescriptionsParity() throws {
-        let tokenizerPath = URL(fileURLWithPath: #file)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("gliner2-base-v1")
-        guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
-            throw XCTSkip("Tokenizer not available")
-        }
+        let tokenizerPath = try TestModel.requireTokenizerDirectory()
 
         let processor = try SchemaTransformer.createFromLocalDirectory(directoryUrl: tokenizerPath)
         let text = "Tim Cook is CEO of Apple."
@@ -63,14 +56,7 @@ final class DescriptionParityTests: XCTestCase {
     }
 
     func testStructureDescriptionsParity() throws {
-        let tokenizerPath = URL(fileURLWithPath: #file)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("gliner2-base-v1")
-        guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
-            throw XCTSkip("Tokenizer not available")
-        }
+        let tokenizerPath = try TestModel.requireTokenizerDirectory()
 
         let processor = try SchemaTransformer.createFromLocalDirectory(directoryUrl: tokenizerPath)
         let text = "Tim Cook is CEO of Apple."
@@ -106,14 +92,7 @@ final class DescriptionParityTests: XCTestCase {
     }
 
     func testEntityWithoutDescriptionsParity() throws {
-        let tokenizerPath = URL(fileURLWithPath: #file)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("gliner2-base-v1")
-        guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
-            throw XCTSkip("Tokenizer not available")
-        }
+        let tokenizerPath = try TestModel.requireTokenizerDirectory()
 
         let processor = try SchemaTransformer.createFromLocalDirectory(directoryUrl: tokenizerPath)
         let text = "Tim Cook is CEO of Apple."
@@ -139,14 +118,7 @@ final class DescriptionParityTests: XCTestCase {
     }
 
     func testStructureWithoutDescriptionsParity() throws {
-        let tokenizerPath = URL(fileURLWithPath: #file)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("gliner2-base-v1")
-        guard FileManager.default.fileExists(atPath: tokenizerPath.path) else {
-            throw XCTSkip("Tokenizer not available")
-        }
+        let tokenizerPath = try TestModel.requireTokenizerDirectory()
 
         let processor = try SchemaTransformer.createFromLocalDirectory(directoryUrl: tokenizerPath)
         let text = "Tim Cook is CEO of Apple."

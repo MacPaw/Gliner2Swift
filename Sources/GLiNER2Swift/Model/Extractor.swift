@@ -55,6 +55,16 @@ public class Extractor: Module {
     /// Count embedding module (CountLSTMv2 for gliner2-base-v1)
     public let countEmbed: CountLSTMv2
 
+    /// Compiled encoder forward, when enabled.
+    ///
+    /// Deliberately not an `MLXArray`-bearing stored property that `Module` reflection
+    /// would see; a closure is `.other` to reflection. It captures the traced graph, so it
+    /// must be discarded whenever the weights change.
+    private var compiledEncode: (@Sendable (MLXArray, MLXArray) -> MLXArray)?
+
+    /// Whether the caller asked for a compiled encoder, so it can be rebuilt after a load.
+    private var wantsCompiledEncoder = false
+
     /// Initialize Extractor from configuration
     ///
     /// - Parameter config: Model configuration
@@ -121,13 +131,54 @@ public class Extractor: Module {
     /// - Parameters:
     ///   - inputIds: Token IDs [batch, seq_len]
     ///   - attentionMask: Optional attention mask [batch, seq_len]
+    ///   - outputHiddenStates: Whether to also return every intermediate layer's output
     /// - Returns: Encoder output with hidden states
     public func encode(
         _ inputIds: MLXArray,
-        attentionMask: MLXArray? = nil
+        attentionMask: MLXArray? = nil,
+        outputHiddenStates: Bool = false
     ) -> DeBERTaEncoderOutput {
-        encoder(inputIds, attentionMask: attentionMask)
+        // The compiled path returns only the last hidden state, so anything asking for the
+        // per-layer outputs falls back to the interpreted forward.
+        if let mask = attentionMask, !outputHiddenStates, let compiled = compiledEncode {
+            encoder.primeCaches(seqLen: inputIds.dim(1))
+            return DeBERTaEncoderOutput(
+                lastHiddenState: compiled(inputIds, mask),
+                hiddenStates: []
+            )
+        }
+        return encoder(inputIds, attentionMask: attentionMask, outputHiddenStates: outputHiddenStates)
     }
+
+    // MARK: - Compiled Encoder
+
+    /// Build (or discard) a compiled encoder forward.
+    ///
+    /// `MLX.compile` keeps a per-shape cache, so this only pays off when batches arrive at
+    /// a small set of sequence lengths — see `SchemaTransformer.sequenceLengthBucket`.
+    /// Not `shapeless`: the encoder reads dimensions into Swift constants, which shapeless
+    /// tracing would silently bake in.
+    public func setCompiledEncoderEnabled(_ enabled: Bool) {
+        wantsCompiledEncoder = enabled
+        rebuildCompiledEncoder()
+    }
+
+    /// Rebuild or drop the compiled closure. Every weight-loading path must call this: the
+    /// traced graph captures the memoized relative-position projections as constants, so a
+    /// closure built against the previous weights would keep serving them.
+    func rebuildCompiledEncoder() {
+        guard wantsCompiledEncoder else {
+            compiledEncode = nil
+            return
+        }
+        let encoder = self.encoder
+        compiledEncode = compile(inputs: [encoder], outputs: [encoder]) {
+            (ids: MLXArray, mask: MLXArray) in
+            encoder(ids, attentionMask: mask).lastHiddenState
+        }
+    }
+
+    var isCompiledEncoderEnabled: Bool { compiledEncode != nil }
 
     // MARK: - Span Representation
 
@@ -139,43 +190,40 @@ public class Extractor: Module {
     /// - Returns: Dictionary with span_rep, spans_idx, and span_mask
     public func computeSpanRep(_ tokenEmbeddings: MLXArray, debug: Bool = false) -> SpanInfo {
         let textLength = tokenEmbeddings.dim(0)
+        let numSpans = textLength * maxWidth
 
-        // Build span indices: (start, end) for each position and width
-        var spansIdx: [(Int, Int)] = []
+        // Build the (start, end) index pair and the validity flag for every span in one
+        // CPU pass. The previous version wrote (-1, -1) for out-of-range spans and then
+        // recovered the same information on the GPU with two `equal`s, a `logicalOr` and a
+        // `where` against a float32 `zeros` — which also promoted the whole index tensor to
+        // float32 and made the gather float-indexed. Invalid entries get (0, 0) here, which
+        // is exactly what that `where` produced, so the gathered values are unchanged.
+        var flatSpans = [Int32](repeating: 0, count: numSpans * 2)
+        var invalid = [Bool](repeating: false, count: numSpans)
+
+        var span = 0
         for i in 0..<textLength {
             for j in 0..<maxWidth {
-                if i + j < textLength {
-                    spansIdx.append((i, i + j))
+                let end = i + j
+                if end < textLength {
+                    flatSpans[span * 2] = Int32(i)
+                    flatSpans[span * 2 + 1] = Int32(end)
                 } else {
-                    spansIdx.append((-1, -1))  // Invalid span
+                    invalid[span] = true   // indices stay (0, 0)
                 }
+                span += 1
             }
         }
 
-        // Convert to MLXArray [1, numSpans, 2]
-        let flatSpans = spansIdx.flatMap { [$0.0, $0.1] }
-        var spanIdxArray = MLXArray(flatSpans.map { Int32($0) })
-        spanIdxArray = spanIdxArray.reshaped([1, spansIdx.count, 2])
-
-        // Create span mask: true for invalid spans
-        let startInvalid = MLX.equal(spanIdxArray[0..., 0..., 0], MLXArray(Int32(-1)))
-        let endInvalid = MLX.equal(spanIdxArray[0..., 0..., 1], MLXArray(Int32(-1)))
-        let spanMask = MLX.logicalOr(startInvalid, endInvalid)
-
-        // Replace invalid indices with (0, 0) for safe indexing
-        let safeSpans = MLX.where(
-            spanMask.expandedDimensions(axis: -1),
-            MLXArray.zeros([1, spansIdx.count, 2]),
-            spanIdxArray
-        )
+        let spanIdxArray = MLXArray(flatSpans).reshaped([1, numSpans, 2])
+        let spanMask = MLXArray(invalid).reshaped([1, numSpans])
 
         // Compute span representations
         let tokenEmbsBatched = tokenEmbeddings.expandedDimensions(axis: 0)  // [1, textLen, hidden]
-        var spanRepResult = spanRep(tokenEmbsBatched, spanIdx: safeSpans, debug: debug)  // [1, textLen, maxWidth, hidden]
+        var spanRepResult = spanRep(tokenEmbsBatched, spanIdx: spanIdxArray, debug: debug)  // [1, textLen, maxWidth, hidden]
         spanRepResult = spanRepResult.squeezed(axis: 0)  // [textLen, maxWidth, hidden]
 
         // Reshape to [numSpans, hidden]
-        let numSpans = textLength * maxWidth
         spanRepResult = spanRepResult.reshaped([numSpans, hiddenSize])
 
         return SpanInfo(
@@ -229,7 +277,8 @@ public struct SpanInfo {
     /// Span representations [numSpans, hidden]
     public let spanRep: MLXArray
 
-    /// Span indices [1, numSpans, 2]
+    /// Span indices [1, numSpans, 2], int32 and gather-safe: spans that run past the end of
+    /// the text are collapsed to (0, 0) and flagged in `spanMask` rather than held as (-1, -1).
     public let spansIdx: MLXArray
 
     /// Span mask [1, numSpans] - true for invalid spans
@@ -238,13 +287,130 @@ public struct SpanInfo {
 
 // MARK: - Weight Loading
 
+/// What to do with a checkpoint's floating-point weights at load time.
+public enum DTypePolicy: Sendable {
+    /// Keep whatever the checkpoint stores: an fp16 file loads as fp16, fp32 as fp32.
+    case auto
+    case float16
+    case bfloat16
+    case float32
+
+    var target: DType? {
+        switch self {
+        case .auto: return nil
+        case .float16: return .float16
+        case .bfloat16: return .bfloat16
+        case .float32: return .float32
+        }
+    }
+
+    /// Cast every floating-point tensor, leaving integer tensors alone.
+    ///
+    /// There is no global compute dtype in MLX — activations take their dtype from the
+    /// weights that produce them — so this is the only place the choice is made.
+    func apply(to weights: [String: MLXArray]) -> [String: MLXArray] {
+        guard let target else { return weights }
+        return weights.mapValues { $0.dtype.isFloatingPoint ? $0.asType(target) : $0 }
+    }
+}
+
+/// Optional 8-bit quantization of the encoder, applied after weights are loaded.
+///
+/// **This trades accuracy for memory. It is off by default and should stay off unless the
+/// memory matters more than exactness on your data.**
+///
+/// Measured on the canonical fp16 snapshot (M3 Pro): active memory 415 -> 253 MB, peak
+/// 521 -> 355 MB, and a few per cent off latency. The embedding table is `[128011, 768]`,
+/// the single largest tensor in the model, so `includeEmbeddings: false` gives up most of
+/// the memory win (415 -> 341 MB) for no accuracy benefit that has been measured.
+///
+/// The cost, on the 58-case prediction-parity corpus: **56 cases match Python instead of
+/// 58** — two borderline decisions move (an entity within a hair of the threshold, and a
+/// confidence just outside the ±0.02 fp16 band). Both are borderline rather than wholesale
+/// errors, but they are real, and they are why this is not the default. Re-run
+/// `PredictionParityTests` with `GLINER2_QUANTIZE=int8` against your own corpus first.
+///
+/// This can be applied two ways, which are numerically identical (`OnDiskQuantizationTests`
+/// pins that): at load, by passing `.int8` to `fromPretrained` on an fp16 model; or ahead
+/// of time, by loading a directory that `convert_weights.py --quantize int8` already packed
+/// — `fromPretrained` detects the `quantization` config block and loads it quantized. The
+/// pre-quantized directory is ~234 MB vs the fp16 398 MB and skips the fp16→int8 transient
+/// at load, so it is the better choice for a shipped int8-only app.
+public enum QuantizationPolicy: Sendable, Equatable {
+    case none
+
+    /// 8-bit, group size 64. `includeEmbeddings: false` restricts it to the encoder's
+    /// `Linear` layers, leaving the token embedding table at full precision.
+    case int8(includeEmbeddings: Bool)
+
+    /// 8-bit over the encoder's linear layers and the embedding table.
+    public static let int8 = QuantizationPolicy.int8(includeEmbeddings: true)
+}
+
+/// How much GPU memory MLX may hold in its allocator cache.
+///
+/// This is a **process-global** MLX setting, not per-model, which is why the default here
+/// changes nothing: a library should not silently reconfigure the host application's
+/// allocator. Pass a policy explicitly when the process is the model.
+public enum GPUCachePolicy: Sendable {
+    /// Leave MLX's global cache limit exactly as it is. The default.
+    case unchanged
+
+    /// Unbounded on macOS, 256 MB on iOS, where the jetsam limit makes an unbounded
+    /// allocator cache the difference between running and being killed.
+    case platformDefault
+
+    case limit(bytes: Int)
+
+    func apply() {
+        switch self {
+        case .unchanged:
+            return
+        case .platformDefault:
+            #if os(iOS) || os(tvOS) || os(visionOS) || os(watchOS)
+            MLX.Memory.cacheLimit = 256 * 1024 * 1024
+            #endif
+        case .limit(let bytes):
+            MLX.Memory.cacheLimit = bytes
+        }
+    }
+}
+
 extension Extractor {
+
+    /// Whether `quantize(_:)` has been applied.
+    ///
+    /// Loading a LoRA adapter afterwards would write full-precision matrices over
+    /// `QuantizedLinear`'s packed weights, so that combination is rejected rather than
+    /// silently corrupting the model.
+    public var isQuantized: Bool {
+        encoder.leafModules().flattened().contains { $0.1 is QuantizedLinear }
+    }
+
+    /// Apply a quantization policy to the encoder. Call after weights are loaded.
+    public func quantize(_ policy: QuantizationPolicy) {
+        guard case .int8(let includeEmbeddings) = policy else { return }
+        applyEncoderQuantization(bits: 8, groupSize: 64, includeEmbeddings: includeEmbeddings)
+        rebuildCompiledEncoder()
+    }
+
+    /// Replace the encoder's `Linear` (and optionally `Embedding`) layers with quantized
+    /// equivalents of the given width. Used both by the runtime `quantize(.int8)` path and,
+    /// at load time, to build the structure a pre-quantized checkpoint's packed weights fill.
+    func applyEncoderQuantization(bits: Int, groupSize: Int, includeEmbeddings: Bool) {
+        MLXNN.quantize(model: encoder, groupSize: groupSize, bits: bits) { _, module in
+            module is Linear || (includeEmbeddings && module is Embedding)
+        }
+        // The relative-position projections are derived from the query/key weights that
+        // were just replaced.
+        encoder.resetCaches()
+    }
 
     // MARK: - Format Detection
 
     /// Detect whether weights are in raw PyTorch format (snake_case keys)
     /// vs pre-converted format (camelCase keys from convert_weights.py).
-    private static func isRawPyTorchFormat(_ weights: [String: MLXArray]) -> Bool {
+    static func isRawPyTorchFormat(_ weights: [String: MLXArray]) -> Bool {
         weights.keys.contains(where: { $0.hasPrefix("span_rep.") })
     }
 
@@ -287,22 +453,23 @@ extension Extractor {
 
         var result: [String: MLXArray] = [:]
         for (key, value) in weights {
-            if key.hasPrefix("encoder.") {
-                // Encoder weights pass through unchanged
-                result[key] = value
-            } else {
-                // Apply first matching prefix replacement
-                var newKey = key
-                for (prefix, replacement) in keyMappings {
-                    if key.hasPrefix(prefix) {
-                        newKey = replacement + key.dropFirst(prefix.count)
-                        break
-                    }
-                }
-                result[newKey] = value
-            }
+            result[mapRawKey(key)] = value
         }
         return result
+    }
+
+    /// Map a single raw PyTorch key into the converted key space.
+    ///
+    /// Encoder keys are identical in both spaces and pass through unchanged. Works for any
+    /// suffix, so it also maps LoRA keys (`.lora_A` / `.lora_B`), not just `.weight`/`.bias`.
+    static func mapRawKey(_ key: String) -> String {
+        // Encoder weights pass through unchanged
+        if key.hasPrefix("encoder.") { return key }
+        // Apply first matching prefix replacement
+        for (prefix, replacement) in keyMappings where key.hasPrefix(prefix) {
+            return replacement + key.dropFirst(prefix.count)
+        }
+        return key
     }
 
     // MARK: - Weight Loading
@@ -312,16 +479,80 @@ extension Extractor {
     /// Auto-detects whether the file contains raw PyTorch keys or pre-converted keys.
     /// Both formats are supported transparently.
     ///
-    /// - Parameter url: URL to model.safetensors (combined weights file)
-    public func loadWeights(from url: URL) throws {
+    /// - Parameters:
+    ///   - url: URL to model.safetensors (combined weights file)
+    ///   - dtype: Floating-point policy to apply to the loaded weights
+    /// Critical weight keys that must be present for the model to run on trained values
+    /// rather than random init. Not the full 263-key set (which would be brittle across
+    /// dtypes and index ranges) — a curated set that covers every encoder layer plus each
+    /// head, so a truncated, wrong, or partial checkpoint is caught. The packed int8 layout
+    /// keeps these `.weight` keys (as uint32) and adds `.scales`/`.biases`, so the set is a
+    /// subset either way.
+    static func requiredCriticalKeys() -> [String] {
+        var keys = [
+            "encoder.embeddings.word_embeddings.weight",
+            "encoder.embeddings.LayerNorm.weight",
+            "encoder.encoder.rel_embeddings.weight",
+            "encoder.encoder.LayerNorm.weight",
+            "countEmbed.gru.weightIH",
+            "countEmbed.gru.weightHH",
+            "countEmbed.posEmbedding.weight",
+        ]
+        for i in 0..<12 {
+            keys.append("encoder.encoder.layer.\(i).attention.self.query_proj.weight")
+            keys.append("encoder.encoder.layer.\(i).output.dense.weight")
+        }
+        return keys
+    }
+
+    /// Prefix families whose indices vary; strict load only checks at least one is present.
+    private static let requiredKeyFamilies = [
+        "spanRep.spanRepLayer.projectStart.",
+        "spanRep.spanRepLayer.projectEnd.",
+        "spanRep.spanRepLayer.outProject.",
+        "classifier.layers.",
+        "countPred.layers.",
+        "countEmbed.transformer.",
+    ]
+
+    /// Throw if the checkpoint is missing any critical key. Off unless `strict` is requested.
+    static func verifyRequired(_ weights: [String: MLXArray]) throws {
+        let present = Set(weights.keys)
+        var missing = requiredCriticalKeys().filter { !present.contains($0) }
+        missing += requiredKeyFamilies
+            .filter { family in !present.contains { $0.hasPrefix(family) } }
+            .map { $0 + "*" }
+        guard missing.isEmpty else {
+            throw GLiNER2Error.weightLoadingFailed(
+                "strict load: \(missing.count) required weight(s) missing "
+                + "(would keep random init): \(missing.prefix(8).joined(separator: ", "))"
+                + (missing.count > 8 ? " …" : ""))
+        }
+    }
+
+    public func loadWeights(from url: URL, dtype: DTypePolicy = .auto, strict: Bool = false) throws {
         let rawWeights = try loadArrays(url: url)
-        let weights = Extractor.sanitize(weights: rawWeights)
+        let sanitized = Extractor.sanitize(weights: rawWeights)
+        if strict { try Extractor.verifyRequired(sanitized) }
+
+        // A pre-quantized checkpoint carries packed weights, detectable by `.scales` keys.
+        // Build the quantized structure BEFORE loading so the packed tensors land in
+        // QuantizedLinear/QuantizedEmbedding, and do not cast the packed uint32 / fp16
+        // scales (dtype policy applies only to plain float checkpoints).
+        let isQuantizedCheckpoint = sanitized.keys.contains { $0.hasSuffix(".scales") }
+        if isQuantizedCheckpoint, let q = config.quantization, !isQuantized {
+            let includeEmbeddings = sanitized["encoder.embeddings.word_embeddings.scales"] != nil
+            applyEncoderQuantization(bits: q.bits, groupSize: q.groupSize,
+                                     includeEmbeddings: includeEmbeddings)
+        }
+        let weights = isQuantizedCheckpoint ? sanitized : dtype.apply(to: sanitized)
 
         // Load encoder weights (keys starting with "encoder.")
         encoder.loadWeights(weights, prefix: "encoder")
 
         // Load model-specific weights (spanRep, classifier, countPred, countEmbed)
         loadModelWeights(weights)
+        rebuildCompiledEncoder()
     }
 
     /// Load all weights from separate SafeTensors files (legacy method)
@@ -329,15 +560,20 @@ extension Extractor {
     /// - Parameters:
     ///   - modelWeightsUrl: URL to gliner2_weights.safetensors
     ///   - encoderWeightsUrl: URL to encoder_weights.safetensors
-    public func loadWeights(modelWeightsUrl: URL, encoderWeightsUrl: URL) throws {
+    public func loadWeights(
+        modelWeightsUrl: URL,
+        encoderWeightsUrl: URL,
+        dtype: DTypePolicy = .auto
+    ) throws {
         // Load model weights
         let rawModelWeights = try loadArrays(url: modelWeightsUrl)
-        let modelWeights = Extractor.sanitize(weights: rawModelWeights)
+        let modelWeights = dtype.apply(to: Extractor.sanitize(weights: rawModelWeights))
         loadModelWeights(modelWeights)
 
         // Load encoder weights
-        let encoderWeights = try loadArrays(url: encoderWeightsUrl)
+        let encoderWeights = try dtype.apply(to: loadArrays(url: encoderWeightsUrl))
         encoder.loadWeights(encoderWeights, prefix: "encoder")
+        rebuildCompiledEncoder()
     }
 
     /// Load GLiNER2 model weights (excluding encoder)
@@ -366,6 +602,7 @@ extension Extractor {
     /// - Parameter weights: Dictionary with encoder weights
     public func loadEncoderWeights(_ weights: [String: MLXArray]) {
         encoder.loadWeights(weights, prefix: "encoder")
+        rebuildCompiledEncoder()
     }
 
     /// Load base weights with LoRA adapter merged in.
@@ -385,13 +622,15 @@ extension Extractor {
         let adapterUrl = adapterPath.appendingPathComponent("adapter_weights.safetensors")
         let adapterWeights = try loadArrays(url: adapterUrl)
 
-        // 3. Merge LoRA deltas into base weights (in Python key space)
+        // 3. Merge LoRA deltas into base weights. `mergeLoRAWeights` accepts either key
+        //    space for the base checkpoint (raw snake_case or converted camelCase).
         mergeLoRAWeights(into: &rawWeights, adapterWeights: adapterWeights, config: config)
 
         // 4. Sanitize and load (reuses existing code path)
         let weights = Extractor.sanitize(weights: rawWeights)
         encoder.loadWeights(weights, prefix: "encoder")
         loadModelWeights(weights)
+        rebuildCompiledEncoder()
     }
 
     private func loadMLPWeights(_ mlp: Sequential, weights: [String: MLXArray], prefix: String) {

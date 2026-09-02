@@ -77,6 +77,35 @@ public class SchemaTransformer {
     /// Whether in training mode
     public var isTraining: Bool = false
 
+    /// Round each batch's padded length up to a fixed set of sizes.
+    ///
+    /// Off by default, because it makes the encoder process tokens nobody asked for. It
+    /// exists for the compiled encoder, whose per-shape cache would otherwise recompile on
+    /// nearly every call — real inputs rarely repeat an exact token count. The extra work
+    /// is close to free at these sizes: a 12x longer sequence only doubles inference time,
+    /// so per-call latency is dominated by fixed cost rather than sequence length.
+    public var padsSequenceLengthToBuckets: Bool = false
+
+    /// Granularity of the padded length when `padsSequenceLengthToBuckets` is on.
+    ///
+    /// Rounding up to a multiple of this rather than to a handful of coarse buckets keeps
+    /// the wasted tokens bounded by `bucketGranularity - 1`. Coarse buckets (64/128/256)
+    /// cost 15 % on batched workloads, where sequence length really does drive the cost.
+    public static var bucketGranularity = 16
+
+    static func sequenceLengthBucket(for length: Int) -> Int {
+        guard length > 0 else { return 0 }
+        let granularity = bucketGranularity
+        return ((length + granularity - 1) / granularity) * granularity
+    }
+
+    /// Token ids that stand for a marker token contributing a schema embedding.
+    ///
+    /// Resolved through the tokenizer rather than assumed, and filtered back through
+    /// `idToToken` so an id only counts when it really round-trips to the marker — the
+    /// same test the decode path used to run at every position.
+    private let markerTokenIds: Set<Int>
+
     /// Initialize from local directory containing tokenizer.json
     ///
     /// - Parameters:
@@ -97,6 +126,14 @@ public class SchemaTransformer {
         self.tokenizer = tokenizer
         self.wordSplitter = WhitespaceTokenSplitter()
         self.tokenPooling = tokenPooling
+
+        var markerIds: Set<Int> = []
+        for marker in SpecialTokens.embeddingTokens {
+            guard let id = tokenizer.tokensToIds([marker]).first,
+                  tokenizer.idToToken(id) == marker else { continue }
+            markerIds.insert(id)
+        }
+        self.markerTokenIds = markerIds
     }
 
     // MARK: - Main Transformation
@@ -106,8 +143,10 @@ public class SchemaTransformer {
     /// - Parameters:
     ///   - text: Input text
     ///   - schema: Schema dictionary
+    ///   - maxLen: Optional cap on the number of whitespace-split text words; longer
+    ///     inputs are truncated to the first `maxLen` words before schema/prefix encoding.
     /// - Returns: Transformed record ready for batching
-    public func transform(text: String, schema: [String: Any]) -> TransformedRecord {
+    public func transform(text: String, schema: [String: Any], maxLen: Int? = nil) -> TransformedRecord {
         // Normalize text: ensure ends with punctuation
         var normalizedText = text
         if !normalizedText.isEmpty && !normalizedText.hasSuffix(".") &&
@@ -126,8 +165,17 @@ public class SchemaTransformer {
             wrapClassificationFields(schema: &mutableSchema, prefix: prefix)
         }
 
-        // Tokenize text
-        let textTokens = wordSplitter.tokenize(normalizedText, lower: true)
+        // Tokenize text into whitespace-split words (with char start/end maps).
+        var textTokens = wordSplitter.tokenize(normalizedText, lower: true)
+
+        // maxLen truncation (Python processor.py:408-410): keep the first `maxLen` words,
+        // done here — after word splitting, before the prefix/schema is joined on. The kept
+        // words' char start/end still index the original (normalized) string, so extracted
+        // spans keep their real positions; only words beyond the cap are dropped.
+        if let maxLen, maxLen >= 0, textTokens.count > maxLen {
+            textTokens = Array(textTokens.prefix(maxLen))
+        }
+
         let allTextTokens = prefix + textTokens.texts
         let prefixLen = prefix.count
 
@@ -136,14 +184,14 @@ public class SchemaTransformer {
 
         // Format input with mappings
         let schemaTokensList = schemaResults.map { $0.schemaTokens }
-        let (inputIds, mappedIndices) = formatInputWithMapping(
+        let formatted = formatInputWithMapping(
             schemaTokensList: schemaTokensList,
             textTokens: allTextTokens
         )
 
         return TransformedRecord(
-            inputIds: inputIds,
-            mappedIndices: mappedIndices,
+            inputIds: formatted.inputIds,
+            mappedIndices: formatted.mappedIndices,
             schemaTokensList: schemaTokensList,
             textTokens: allTextTokens,
             structureLabels: schemaResults.map { $0.output as Any },
@@ -151,7 +199,11 @@ public class SchemaTransformer {
             startTokenIdx: textTokens.starts,
             endTokenIdx: textTokens.ends,
             text: normalizedText,
-            schema: schema  // Original schema before modification
+            schema: schema,  // Original schema before modification
+            textStartIndex: formatted.textStartIndex,
+            wordFirstIndices: formatted.wordFirstIndices,
+            wordSubwordCounts: formatted.wordSubwordCounts,
+            schemaMarkerPositions: formatted.schemaMarkerPositions
         )
     }
 
@@ -390,10 +442,22 @@ public class SchemaTransformer {
                     continue
                 }
 
+                // Classification extras (Phase 6.5): prompt, per-label descriptions, and
+                // few-shot examples stored as [[input, output]] pairs.
+                let prompt = classification["prompt"] as? String
+                let labelDescriptions = classification["label_descriptions"] as? [String: String]
+                let examples = (classification["examples"] as? [[String]])?.compactMap {
+                    pair -> (input: String, output: String)? in
+                    pair.count >= 2 ? (pair[0], pair[1]) : nil
+                }
+
                 let schemaTokens = buildSchemaTokens(
                     parent: task,
                     fields: labels,
-                    childPrefix: SpecialTokens.lToken
+                    childPrefix: SpecialTokens.lToken,
+                    prompt: prompt,
+                    labelDescriptions: labelDescriptions,
+                    examples: examples
                 )
 
                 // Classification output: binary labels
@@ -411,25 +475,39 @@ public class SchemaTransformer {
         return results
     }
 
-    /// Build schema token sequence
+    /// Build schema token sequence.
+    ///
+    /// The prompt string mirrors Python `_transform_schema` at inference (example_mode
+    /// "both", no shuffling): optional `task: prompt`, then `[DESCRIPTION] label: desc` for
+    /// each label that has one (in label order), then `[EXAMPLE] input [OUTPUT] output` for
+    /// each few-shot example whose output is one of the labels.
     private func buildSchemaTokens(
         parent: String,
         fields: [String],
         childPrefix: String,
         prompt: String? = nil,
-        labelDescriptions: [String: String]? = nil
+        labelDescriptions: [String: String]? = nil,
+        examples: [(input: String, output: String)]? = nil
     ) -> [String] {
         var promptStr = parent
         if let prompt = prompt {
             promptStr = "\(parent): \(prompt)"
         }
 
-        // Add descriptions if available
+        // Add descriptions if available (label order; only labels that have one).
         if let descriptions = labelDescriptions {
             for label in fields {
                 if let desc = descriptions[label] {
                     promptStr += " \(SpecialTokens.descToken) \(label): \(desc)"
                 }
+            }
+        }
+
+        // Few-shot examples: kept in given order, only those whose output is a label.
+        if let examples = examples {
+            for example in examples where fields.contains(example.output) {
+                promptStr += " \(SpecialTokens.exampleToken) \(example.input)"
+                    + " \(SpecialTokens.outputToken) \(example.output)"
             }
         }
 
@@ -447,16 +525,30 @@ public class SchemaTransformer {
 
     // MARK: - Input Formatting
 
+    /// Everything `formatInputWithMapping` derives in its single pass over the prompt.
+    private struct FormattedInput {
+        let inputIds: [Int]
+        let mappedIndices: [MappedIndex]
+        let textStartIndex: Int
+        let wordFirstIndices: [Int]
+        let wordSubwordCounts: [Int]
+        let schemaMarkerPositions: [[Int]]
+    }
+
     /// Format input and create token mappings
+    ///
+    /// Also records, in the same pass, the index arrays the decode path needs to gather
+    /// word-level and schema-level embeddings without inspecting individual token ids
+    /// again: where the text segment starts, which subword opens each word (and how many
+    /// subwords it spans), and where each schema's marker tokens landed.
     ///
     /// - Parameters:
     ///   - schemaTokensList: List of schema token lists
     ///   - textTokens: Text tokens
-    /// - Returns: (input_ids, mapped_indices)
     private func formatInputWithMapping(
         schemaTokensList: [[String]],
         textTokens: [String]
-    ) -> ([Int], [MappedIndex]) {
+    ) -> FormattedInput {
         // Build combined tokens
         var combined: [String] = []
         for schemaTokens in schemaTokensList {
@@ -479,6 +571,12 @@ public class SchemaTransformer {
         var currentSchema = 0
         var foundSep = false
 
+        var textStartIndex = -1
+        var wordFirstIndices: [Int] = []
+        var wordSubwordCounts: [Int] = []
+        var schemaMarkerPositions: [[Int]] = Array(repeating: [], count: numSchemas)
+        let markerIds = markerTokenIds
+
         for (origIdx, token) in combined.enumerated() {
             let segType: SegmentType
             let schemaIdx: Int
@@ -500,15 +598,44 @@ public class SchemaTransformer {
 
             // Tokenize token into subword IDs directly
             let subTokenIds = tokenize(token)
+            let tokenStart = inputIds.count
             inputIds.append(contentsOf: subTokenIds)
 
             // Map each subword to original token
             for _ in subTokenIds {
                 mappings.append(MappedIndex(segType, origIdx, schemaIdx))
             }
+
+            switch segType {
+            case .schema:
+                if schemaIdx >= 0 && schemaIdx < numSchemas {
+                    for (offset, id) in subTokenIds.enumerated() where markerIds.contains(id) {
+                        schemaMarkerPositions[schemaIdx].append(tokenStart + offset)
+                    }
+                }
+            case .text:
+                if textStartIndex < 0 {
+                    textStartIndex = tokenStart
+                }
+                // A word that produced no subword contributes no pooled position, which is
+                // what the per-subword loop this replaces also did.
+                if !subTokenIds.isEmpty {
+                    wordFirstIndices.append(tokenStart - textStartIndex)
+                    wordSubwordCounts.append(subTokenIds.count)
+                }
+            case .sep:
+                break
+            }
         }
 
-        return (inputIds, mappings)
+        return FormattedInput(
+            inputIds: inputIds,
+            mappedIndices: mappings,
+            textStartIndex: textStartIndex < 0 ? mappings.count : textStartIndex,
+            wordFirstIndices: wordFirstIndices,
+            wordSubwordCounts: wordSubwordCounts,
+            schemaMarkerPositions: schemaMarkerPositions
+        )
     }
 
     /// Tokenize a single token into subword IDs
@@ -534,7 +661,12 @@ public class SchemaTransformer {
             return PreprocessedBatch.empty()
         }
 
-        let maxLen = records.map { $0.inputIds.count }.max() ?? 0
+        let longest = records.map { $0.inputIds.count }.max() ?? 0
+        // Padded positions carry attention mask 0, and the decode path indexes by the
+        // per-record mappings, so extra padding cannot reach the output.
+        let maxLen = padsSequenceLengthToBuckets
+            ? Self.sequenceLengthBucket(for: longest)
+            : longest
         let batchSize = records.count
 
         // Pad input IDs and create attention masks
@@ -576,7 +708,12 @@ public class SchemaTransformer {
             startMappings: records.map { $0.startTokenIdx },
             endMappings: records.map { $0.endTokenIdx },
             originalTexts: records.map { $0.text },
-            originalSchemas: records.map { $0.schema }
+            originalSchemas: records.map { $0.schema },
+            inputIdsCPU: records.map { $0.inputIds },
+            textStartIndices: records.map { $0.textStartIndex },
+            wordFirstIndices: records.map { $0.wordFirstIndices },
+            wordSubwordCounts: records.map { $0.wordSubwordCounts },
+            schemaMarkerPositions: records.map { $0.schemaMarkerPositions }
         )
     }
 }

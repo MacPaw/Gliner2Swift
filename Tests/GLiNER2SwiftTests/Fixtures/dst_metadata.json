@@ -1,0 +1,16 @@
+{
+  "input_size": 768,
+  "hidden_size": 128,
+  "L": 3,
+  "M": 4,
+  "input_shape": [
+    3,
+    4,
+    768
+  ],
+  "output_shape": [
+    3,
+    4,
+    768
+  ]
+}

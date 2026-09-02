@@ -1,0 +1,19 @@
+{
+  "text": "Tim Cook is CEO of Apple.",
+  "text_normalized": "Tim Cook is CEO of Apple.",
+  "entity_types": [
+    "person",
+    "company"
+  ],
+  "schema": {
+    "json_structures": [],
+    "classifications": [],
+    "entities": {
+      "person": "",
+      "company": ""
+    },
+    "relations": [],
+    "json_descriptions": {},
+    "entity_descriptions": {}
+  }
+}

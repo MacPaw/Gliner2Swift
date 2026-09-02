@@ -1,0 +1,30 @@
+{
+  "person_info": [
+    {
+      "name": [
+        {
+          "text": "John Smith",
+          "confidence": 1.0,
+          "start": 0,
+          "end": 10
+        }
+      ],
+      "age": [
+        {
+          "text": "35",
+          "confidence": 0.9999765157699585,
+          "start": 14,
+          "end": 16
+        }
+      ],
+      "location": [
+        {
+          "text": "New York",
+          "confidence": 0.9999992847442627,
+          "start": 40,
+          "end": 48
+        }
+      ]
+    }
+  ]
+}

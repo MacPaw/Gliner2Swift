@@ -1,0 +1,20 @@
+{
+  "entities": {
+    "person": [
+      {
+        "text": "Tim Cook",
+        "confidence": 1.0,
+        "start": 0,
+        "end": 8
+      }
+    ],
+    "company": [
+      {
+        "text": "Apple",
+        "confidence": 1.0,
+        "start": 19,
+        "end": 24
+      }
+    ]
+  }
+}

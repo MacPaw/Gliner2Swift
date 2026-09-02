@@ -53,16 +53,16 @@ public class DeBERTaLayer: Module {
     public let attention: DisentangledSelfAttention
 
     /// Attention output dense
-    public let attentionOutputDense: Linear
+    @ModuleInfo public var attentionOutputDense: Linear
 
     /// Attention output LayerNorm
     public let attentionLayerNorm: LayerNorm
 
     /// Intermediate (FFN first) dense
-    public let intermediateDense: Linear
+    @ModuleInfo public var intermediateDense: Linear
 
     /// Output (FFN second) dense
-    public let outputDense: Linear
+    @ModuleInfo public var outputDense: Linear
 
     /// Output LayerNorm
     public let outputLayerNorm: LayerNorm
@@ -187,14 +187,15 @@ extension DeBERTaLayer {
     public func loadWeights(_ weights: [String: MLXArray], prefix: String) {
         let p = prefix.isEmpty ? "" : "\(prefix)."
 
-        // Helper to update a Linear module
+        // Update a Linear (or already-quantized QuantizedLinear) from the dict. The shared
+        // helper also loads `.scales`/`.biases` when the checkpoint is pre-quantized.
         func updateLinear(_ module: Linear, weightKey: String, biasKey: String) {
-            var params: [String: MLXArray] = [:]
-            if let w = weights[weightKey] { params["weight"] = w }
-            if let b = weights[biasKey] { params["bias"] = b }
-            if !params.isEmpty {
-                module.update(parameters: ModuleParameters.unflattened(params))
-            }
+            let base = weightKey.hasSuffix(".weight") ? String(weightKey.dropLast(7)) : weightKey
+            updateLinearWeights(
+                module,
+                weight: weights[weightKey], bias: weights[biasKey],
+                scales: weights[base + ".scales"], quantBiases: weights[base + ".biases"]
+            )
         }
 
         // Helper to update a LayerNorm module

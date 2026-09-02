@@ -1,0 +1,2651 @@
+{
+  "classifier.0.bias": {
+    "shape": [
+      1536
+    ],
+    "l1_sum": 23.523597717285156,
+    "mean": -0.007427867501974106,
+    "std": 0.01686970517039299,
+    "min": -0.04648087918758392,
+    "max": 0.03133700415492058
+  },
+  "classifier.0.weight": {
+    "shape": [
+      1536,
+      768
+    ],
+    "l1_sum": 24563.728515625,
+    "mean": 0.0003506253124214709,
+    "std": 0.026071468368172646,
+    "min": -0.12751436233520508,
+    "max": 0.1376347690820694
+  },
+  "classifier.2.bias": {
+    "shape": [
+      1
+    ],
+    "l1_sum": 0.010761783458292484,
+    "mean": -0.010761783458292484,
+    "std": null,
+    "min": -0.010761783458292484,
+    "max": -0.010761783458292484
+  },
+  "classifier.2.weight": {
+    "shape": [
+      1,
+      1536
+    ],
+    "l1_sum": 30.75989532470703,
+    "mean": 0.002712579444050789,
+    "std": 0.027259433642029762,
+    "min": -0.11565703898668289,
+    "max": 0.093623585999012
+  },
+  "count_embed.gru.bias_hh_l0": {
+    "shape": [
+      2304
+    ],
+    "l1_sum": 46.38595962524414,
+    "mean": 0.008840213529765606,
+    "std": 0.024105869233608246,
+    "min": -0.05701155215501785,
+    "max": 0.1112995594739914
+  },
+  "count_embed.gru.bias_ih_l0": {
+    "shape": [
+      2304
+    ],
+    "l1_sum": 48.27344512939453,
+    "mean": 0.009462248533964157,
+    "std": 0.025140654295682907,
+    "min": -0.06567990779876709,
+    "max": 0.10447973757982254
+  },
+  "count_embed.gru.weight_hh_l0": {
+    "shape": [
+      2304,
+      768
+    ],
+    "l1_sum": 40397.3671875,
+    "mean": 0.00020820244390051812,
+    "std": 0.02940625697374344,
+    "min": -0.22285178303718567,
+    "max": 0.20065176486968994
+  },
+  "count_embed.gru.weight_ih_l0": {
+    "shape": [
+      2304,
+      768
+    ],
+    "l1_sum": 31748.458984375,
+    "mean": -0.00010085110261570662,
+    "std": 0.022358426824212074,
+    "min": -0.13141188025474548,
+    "max": 0.12581230700016022
+  },
+  "count_embed.pos_embedding.weight": {
+    "shape": [
+      20,
+      768
+    ],
+    "l1_sum": 8541.9853515625,
+    "mean": 0.0024859400000423193,
+    "std": 0.7019697427749634,
+    "min": -2.897118091583252,
+    "max": 2.7736284732818604
+  },
+  "count_embed.transformer.in_projector.bias": {
+    "shape": [
+      128
+    ],
+    "l1_sum": 1.8491721153259277,
+    "mean": 0.0014680043095722795,
+    "std": 0.01693306490778923,
+    "min": -0.031791701912879944,
+    "max": 0.0389067567884922
+  },
+  "count_embed.transformer.in_projector.weight": {
+    "shape": [
+      128,
+      768
+    ],
+    "l1_sum": 2183.361328125,
+    "mean": 5.816919383505592e-06,
+    "std": 0.0278767216950655,
+    "min": -0.1274394392967224,
+    "max": 0.13637295365333557
+  },
+  "count_embed.transformer.out_projector.0.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 13.635580062866211,
+    "mean": -0.013442978262901306,
+    "std": 0.01744896173477173,
+    "min": -0.056740567088127136,
+    "max": 0.05828056111931801
+  },
+  "count_embed.transformer.out_projector.0.weight": {
+    "shape": [
+      768,
+      896
+    ],
+    "l1_sum": 13327.814453125,
+    "mean": 0.00017425620171707124,
+    "std": 0.024561133235692978,
+    "min": -0.1716012954711914,
+    "max": 0.16430121660232544
+  },
+  "count_embed.transformer.out_projector.2.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 16.791637420654297,
+    "mean": -0.017224036157131195,
+    "std": 0.020069973543286324,
+    "min": -0.08062829822301865,
+    "max": 0.037850625813007355
+  },
+  "count_embed.transformer.out_projector.2.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 12140.75390625,
+    "mean": 0.004713098984211683,
+    "std": 0.026445848867297173,
+    "min": -0.22318099439144135,
+    "max": 0.2510160803794861
+  },
+  "count_embed.transformer.out_projector.4.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 21.03302764892578,
+    "mean": 0.0003496426797937602,
+    "std": 0.032539770007133484,
+    "min": -0.08729778975248337,
+    "max": 0.08002052456140518
+  },
+  "count_embed.transformer.out_projector.4.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 10298.2099609375,
+    "mean": -2.941741513495799e-05,
+    "std": 0.021947696805000305,
+    "min": -0.2593487501144409,
+    "max": 0.39189544320106506
+  },
+  "count_embed.transformer.transformer.layers.0.linear1.bias": {
+    "shape": [
+      256
+    ],
+    "l1_sum": 8.941652297973633,
+    "mean": -0.016708455979824066,
+    "std": 0.03857904672622681,
+    "min": -0.1030564084649086,
+    "max": 0.07577691227197647
+  },
+  "count_embed.transformer.transformer.layers.0.linear1.weight": {
+    "shape": [
+      256,
+      128
+    ],
+    "l1_sum": 1255.25732421875,
+    "mean": -8.36316030472517e-05,
+    "std": 0.04657629132270813,
+    "min": -0.1657983809709549,
+    "max": 0.18849638104438782
+  },
+  "count_embed.transformer.transformer.layers.0.linear2.bias": {
+    "shape": [
+      128
+    ],
+    "l1_sum": 3.1325578689575195,
+    "mean": -0.0014363047666847706,
+    "std": 0.02929387055337429,
+    "min": -0.061928004026412964,
+    "max": 0.055966395884752274
+  },
+  "count_embed.transformer.transformer.layers.0.linear2.weight": {
+    "shape": [
+      128,
+      256
+    ],
+    "l1_sum": 1044.1553955078125,
+    "mean": -0.00023407544358633459,
+    "std": 0.039318498224020004,
+    "min": -0.14371615648269653,
+    "max": 0.14695793390274048
+  },
+  "count_embed.transformer.transformer.layers.0.norm1.bias": {
+    "shape": [
+      128
+    ],
+    "l1_sum": 1.7975585460662842,
+    "mean": 0.0006087911897338927,
+    "std": 0.017202967777848244,
+    "min": -0.03758927807211876,
+    "max": 0.03817733749747276
+  },
+  "count_embed.transformer.transformer.layers.0.norm1.weight": {
+    "shape": [
+      128
+    ],
+    "l1_sum": 93.45642852783203,
+    "mean": 0.7301283478736877,
+    "std": 0.022988855838775635,
+    "min": 0.6697442531585693,
+    "max": 0.7918363809585571
+  },
+  "count_embed.transformer.transformer.layers.0.norm2.bias": {
+    "shape": [
+      128
+    ],
+    "l1_sum": 2.4072561264038086,
+    "mean": 0.0009672814048826694,
+    "std": 0.02333778887987137,
+    "min": -0.05892151966691017,
+    "max": 0.06361508369445801
+  },
+  "count_embed.transformer.transformer.layers.0.norm2.weight": {
+    "shape": [
+      128
+    ],
+    "l1_sum": 94.75309753417969,
+    "mean": 0.7402585744857788,
+    "std": 0.02395620197057724,
+    "min": 0.6914563179016113,
+    "max": 0.810663104057312
+  },
+  "count_embed.transformer.transformer.layers.0.self_attn.in_proj_bias": {
+    "shape": [
+      384
+    ],
+    "l1_sum": 2.9072299003601074,
+    "mean": 0.0006377714453265071,
+    "std": 0.01274767704308033,
+    "min": -0.06197566166520119,
+    "max": 0.049970488995313644
+  },
+  "count_embed.transformer.transformer.layers.0.self_attn.in_proj_weight": {
+    "shape": [
+      384,
+      128
+    ],
+    "l1_sum": 2109.17822265625,
+    "mean": -0.00020765727094840258,
+    "std": 0.05104280635714531,
+    "min": -0.14604896306991577,
+    "max": 0.15484219789505005
+  },
+  "count_embed.transformer.transformer.layers.0.self_attn.out_proj.bias": {
+    "shape": [
+      128
+    ],
+    "l1_sum": 1.4986498355865479,
+    "mean": 0.0002486600715201348,
+    "std": 0.014645587652921677,
+    "min": -0.04046233743429184,
+    "max": 0.03412730619311333
+  },
+  "count_embed.transformer.transformer.layers.0.self_attn.out_proj.weight": {
+    "shape": [
+      128,
+      128
+    ],
+    "l1_sum": 584.020263671875,
+    "mean": 0.00017597524856682867,
+    "std": 0.04235568642616272,
+    "min": -0.12254969775676727,
+    "max": 0.1231570616364479
+  },
+  "count_embed.transformer.transformer.layers.1.linear1.bias": {
+    "shape": [
+      256
+    ],
+    "l1_sum": 8.6033296585083,
+    "mean": -0.008262641727924347,
+    "std": 0.038848526775836945,
+    "min": -0.08832184225320816,
+    "max": 0.08820262551307678
+  },
+  "count_embed.transformer.transformer.layers.1.linear1.weight": {
+    "shape": [
+      256,
+      128
+    ],
+    "l1_sum": 1261.4031982421875,
+    "mean": 0.00020106026204302907,
+    "std": 0.04678286239504814,
+    "min": -0.17611806094646454,
+    "max": 0.17558243870735168
+  },
+  "count_embed.transformer.transformer.layers.1.linear2.bias": {
+    "shape": [
+      128
+    ],
+    "l1_sum": 3.3769466876983643,
+    "mean": -0.001157682272605598,
+    "std": 0.03226134926080704,
+    "min": -0.08020061999559402,
+    "max": 0.06635371595621109
+  },
+  "count_embed.transformer.transformer.layers.1.linear2.weight": {
+    "shape": [
+      128,
+      256
+    ],
+    "l1_sum": 1023.4971313476562,
+    "mean": -0.0001366659562336281,
+    "std": 0.03906052187085152,
+    "min": -0.1522170603275299,
+    "max": 0.21668894588947296
+  },
+  "count_embed.transformer.transformer.layers.1.norm1.bias": {
+    "shape": [
+      128
+    ],
+    "l1_sum": 3.52785062789917,
+    "mean": 0.00010480196215212345,
+    "std": 0.038366347551345825,
+    "min": -0.12629687786102295,
+    "max": 0.1262868195772171
+  },
+  "count_embed.transformer.transformer.layers.1.norm1.weight": {
+    "shape": [
+      128
+    ],
+    "l1_sum": 92.19374084472656,
+    "mean": 0.7202636003494263,
+    "std": 0.03135235980153084,
+    "min": 0.6648933291435242,
+    "max": 0.8289995193481445
+  },
+  "count_embed.transformer.transformer.layers.1.norm2.bias": {
+    "shape": [
+      128
+    ],
+    "l1_sum": 2.7889599800109863,
+    "mean": 0.00022935750894248486,
+    "std": 0.0281156525015831,
+    "min": -0.08644577115774155,
+    "max": 0.06655970215797424
+  },
+  "count_embed.transformer.transformer.layers.1.norm2.weight": {
+    "shape": [
+      128
+    ],
+    "l1_sum": 86.91523742675781,
+    "mean": 0.6790252923965454,
+    "std": 0.028821947053074837,
+    "min": 0.592505931854248,
+    "max": 0.7477107048034668
+  },
+  "count_embed.transformer.transformer.layers.1.self_attn.in_proj_bias": {
+    "shape": [
+      384
+    ],
+    "l1_sum": 4.050443649291992,
+    "mean": -0.0002460044634062797,
+    "std": 0.01679418608546257,
+    "min": -0.068933866918087,
+    "max": 0.0713953748345375
+  },
+  "count_embed.transformer.transformer.layers.1.self_attn.in_proj_weight": {
+    "shape": [
+      384,
+      128
+    ],
+    "l1_sum": 2256.93896484375,
+    "mean": -0.0002051314222626388,
+    "std": 0.05502450093626976,
+    "min": -0.18426872789859772,
+    "max": 0.17459137737751007
+  },
+  "count_embed.transformer.transformer.layers.1.self_attn.out_proj.bias": {
+    "shape": [
+      128
+    ],
+    "l1_sum": 2.2292401790618896,
+    "mean": -0.0004116371273994446,
+    "std": 0.021541470661759377,
+    "min": -0.06726943701505661,
+    "max": 0.05187109112739563
+  },
+  "count_embed.transformer.transformer.layers.1.self_attn.out_proj.weight": {
+    "shape": [
+      128,
+      128
+    ],
+    "l1_sum": 611.4761352539062,
+    "mean": 0.00019760883878916502,
+    "std": 0.044751934707164764,
+    "min": -0.16808545589447021,
+    "max": 0.14246155321598053
+  },
+  "count_pred.0.bias": {
+    "shape": [
+      1536
+    ],
+    "l1_sum": 23.775238037109375,
+    "mean": -0.00831923633813858,
+    "std": 0.016835324466228485,
+    "min": -0.05403495207428932,
+    "max": 0.03331741690635681
+  },
+  "count_pred.0.weight": {
+    "shape": [
+      1536,
+      768
+    ],
+    "l1_sum": 25082.7890625,
+    "mean": 0.00011732989514712244,
+    "std": 0.02709335833787918,
+    "min": -0.1907028704881668,
+    "max": 0.19129805266857147
+  },
+  "count_pred.2.bias": {
+    "shape": [
+      20
+    ],
+    "l1_sum": 1.8137890100479126,
+    "mean": -0.09068945050239563,
+    "std": 0.1279447078704834,
+    "min": -0.6205883622169495,
+    "max": -0.005357095971703529
+  },
+  "count_pred.2.weight": {
+    "shape": [
+      20,
+      1536
+    ],
+    "l1_sum": 5618.9521484375,
+    "mean": -0.18095241487026215,
+    "std": 0.1375666856765747,
+    "min": -1.0192984342575073,
+    "max": 0.13852620124816895
+  },
+  "encoder.embeddings.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 226.48931884765625,
+    "mean": -0.013028468005359173,
+    "std": 0.31939491629600525,
+    "min": -0.385214239358902,
+    "max": 0.7271499037742615
+  },
+  "encoder.embeddings.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 405.904296875,
+    "mean": 0.5285212397575378,
+    "std": 0.04175544157624245,
+    "min": 0.1811983734369278,
+    "max": 0.6588934063911438
+  },
+  "encoder.embeddings.word_embeddings.weight": {
+    "shape": [
+      128011,
+      768
+    ],
+    "l1_sum": 8505137.0,
+    "mean": 0.0006473286775872111,
+    "std": 0.10745669901371002,
+    "min": -1.6567840576171875,
+    "max": 0.9574910998344421
+  },
+  "encoder.encoder.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 23.787132263183594,
+    "mean": -0.02337658405303955,
+    "std": 0.037943284958601,
+    "min": -0.29981347918510437,
+    "max": 0.12596650421619415
+  },
+  "encoder.encoder.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 101.6683578491211,
+    "mean": 0.12764060497283936,
+    "std": 0.10369469225406647,
+    "min": -0.061742186546325684,
+    "max": 0.7721565365791321
+  },
+  "encoder.encoder.layer.0.attention.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 108.04660034179688,
+    "mean": -0.1281900256872177,
+    "std": 0.1570650339126587,
+    "min": -2.7993664741516113,
+    "max": 1.979241132736206
+  },
+  "encoder.encoder.layer.0.attention.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 452.3390808105469,
+    "mean": 0.5889831781387329,
+    "std": 0.14079897105693817,
+    "min": 0.25358253717422485,
+    "max": 3.576265811920166
+  },
+  "encoder.encoder.layer.0.attention.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 82.205078125,
+    "mean": 0.000570978329051286,
+    "std": 0.1335853785276413,
+    "min": -0.508324384689331,
+    "max": 0.4351033568382263
+  },
+  "encoder.encoder.layer.0.attention.output.dense.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 13325.04296875,
+    "mean": -7.73032024881104e-06,
+    "std": 0.029059119522571564,
+    "min": -0.36668896675109863,
+    "max": 0.37107592821121216
+  },
+  "encoder.encoder.layer.0.attention.self.key_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 502.303955078125,
+    "mean": -0.0006169642438180745,
+    "std": 0.7423608899116516,
+    "min": -1.7820947170257568,
+    "max": 2.7588560581207275
+  },
+  "encoder.encoder.layer.0.attention.self.key_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 35440.8984375,
+    "mean": 5.63795147172641e-05,
+    "std": 0.07727549225091934,
+    "min": -0.4698699712753296,
+    "max": 0.9202574491500854
+  },
+  "encoder.encoder.layer.0.attention.self.query_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 160.0762939453125,
+    "mean": 0.009221536107361317,
+    "std": 0.2836218774318695,
+    "min": -1.3233689069747925,
+    "max": 1.2043663263320923
+  },
+  "encoder.encoder.layer.0.attention.self.query_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 35817.6640625,
+    "mean": 3.944171476177871e-05,
+    "std": 0.07814287394285202,
+    "min": -0.8842021226882935,
+    "max": 1.2159180641174316
+  },
+  "encoder.encoder.layer.0.attention.self.value_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 36.10793685913086,
+    "mean": 0.001181418658234179,
+    "std": 0.08299126476049423,
+    "min": -0.6138194799423218,
+    "max": 0.46579286456108093
+  },
+  "encoder.encoder.layer.0.attention.self.value_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 13340.1015625,
+    "mean": -8.04411592980614e-06,
+    "std": 0.02895916998386383,
+    "min": -0.20808495581150055,
+    "max": 0.24312442541122437
+  },
+  "encoder.encoder.layer.0.intermediate.dense.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 1361.3138427734375,
+    "mean": -0.43375468254089355,
+    "std": 0.1702408790588379,
+    "min": -1.7579318284988403,
+    "max": 1.263169765472412
+  },
+  "encoder.encoder.layer.0.intermediate.dense.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 93057.5625,
+    "mean": 0.01059543713927269,
+    "std": 0.04924473911523819,
+    "min": -1.1210649013519287,
+    "max": 0.9613862037658691
+  },
+  "encoder.encoder.layer.0.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 26.837352752685547,
+    "mean": -0.01966884173452854,
+    "std": 0.06031382083892822,
+    "min": -0.6845054626464844,
+    "max": 0.8740224838256836
+  },
+  "encoder.encoder.layer.0.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 472.0874328613281,
+    "mean": 0.6146971583366394,
+    "std": 0.04860273376107216,
+    "min": 0.07949988543987274,
+    "max": 0.8426148295402527
+  },
+  "encoder.encoder.layer.0.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 32.267757415771484,
+    "mean": -0.0008052780176512897,
+    "std": 0.057295847684144974,
+    "min": -0.620714008808136,
+    "max": 0.2555445730686188
+  },
+  "encoder.encoder.layer.0.output.dense.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 85679.078125,
+    "mean": -6.756238144589588e-05,
+    "std": 0.04768598452210426,
+    "min": -5.6570611000061035,
+    "max": 1.200270652770996
+  },
+  "encoder.encoder.layer.1.attention.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 78.47086334228516,
+    "mean": -0.08847614377737045,
+    "std": 0.14219671487808228,
+    "min": -1.96296226978302,
+    "max": 2.0312185287475586
+  },
+  "encoder.encoder.layer.1.attention.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 382.23992919921875,
+    "mean": 0.4977082312107086,
+    "std": 0.07350508868694305,
+    "min": 0.32607486844062805,
+    "max": 1.8492896556854248
+  },
+  "encoder.encoder.layer.1.attention.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 98.62451171875,
+    "mean": 0.0019266937160864472,
+    "std": 0.16490648686885834,
+    "min": -0.419748455286026,
+    "max": 1.3224364519119263
+  },
+  "encoder.encoder.layer.1.attention.output.dense.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 15049.900390625,
+    "mean": -1.9601764506660402e-05,
+    "std": 0.03360329940915108,
+    "min": -0.33286628127098083,
+    "max": 0.25681668519973755
+  },
+  "encoder.encoder.layer.1.attention.self.key_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 354.3956298828125,
+    "mean": -0.029395652934908867,
+    "std": 0.6015064716339111,
+    "min": -3.5843160152435303,
+    "max": 4.576155185699463
+  },
+  "encoder.encoder.layer.1.attention.self.key_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 29284.400390625,
+    "mean": 6.514535016322043e-06,
+    "std": 0.06358624994754791,
+    "min": -0.44070276618003845,
+    "max": 0.49193572998046875
+  },
+  "encoder.encoder.layer.1.attention.self.query_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 154.04525756835938,
+    "mean": -0.004179388750344515,
+    "std": 0.26679274439811707,
+    "min": -1.3080236911773682,
+    "max": 1.1592600345611572
+  },
+  "encoder.encoder.layer.1.attention.self.query_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 29612.884765625,
+    "mean": -0.00017207401106134057,
+    "std": 0.06422345340251923,
+    "min": -0.4886130690574646,
+    "max": 0.5940453410148621
+  },
+  "encoder.encoder.layer.1.attention.self.value_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 32.57103729248047,
+    "mean": 0.004185977391898632,
+    "std": 0.09441566467285156,
+    "min": -0.7447787523269653,
+    "max": 0.9565389752388
+  },
+  "encoder.encoder.layer.1.attention.self.value_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 14927.7890625,
+    "mean": 6.516018038382754e-05,
+    "std": 0.0332648903131485,
+    "min": -0.37062808871269226,
+    "max": 0.3671340048313141
+  },
+  "encoder.encoder.layer.1.intermediate.dense.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 1220.8046875,
+    "mean": -0.3883073627948761,
+    "std": 0.1668516993522644,
+    "min": -1.1311984062194824,
+    "max": 1.2516515254974365
+  },
+  "encoder.encoder.layer.1.intermediate.dense.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 90894.484375,
+    "mean": 0.008964937180280685,
+    "std": 0.048333823680877686,
+    "min": -1.7831555604934692,
+    "max": 2.1718640327453613
+  },
+  "encoder.encoder.layer.1.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 16.778060913085938,
+    "mean": -0.013253836892545223,
+    "std": 0.0669475570321083,
+    "min": -0.5337719321250916,
+    "max": 1.3340805768966675
+  },
+  "encoder.encoder.layer.1.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 380.0480651855469,
+    "mean": 0.49485424160957336,
+    "std": 0.0404399149119854,
+    "min": 0.07114788889884949,
+    "max": 0.7461504340171814
+  },
+  "encoder.encoder.layer.1.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 68.79295349121094,
+    "mean": -0.004085823427885771,
+    "std": 0.12845924496650696,
+    "min": -1.68205988407135,
+    "max": 0.4382619857788086
+  },
+  "encoder.encoder.layer.1.output.dense.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 80605.4765625,
+    "mean": -5.1732098654611036e-05,
+    "std": 0.04557595029473305,
+    "min": -12.26248550415039,
+    "max": 1.6381824016571045
+  },
+  "encoder.encoder.layer.10.attention.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 49.404052734375,
+    "mean": 0.05032062903046608,
+    "std": 0.1591712385416031,
+    "min": -3.7783451080322266,
+    "max": 1.668949842453003
+  },
+  "encoder.encoder.layer.10.attention.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 279.26348876953125,
+    "mean": 0.36362433433532715,
+    "std": 0.09814697504043579,
+    "min": 0.1793154627084732,
+    "max": 1.5483782291412354
+  },
+  "encoder.encoder.layer.10.attention.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 77.13605499267578,
+    "mean": 0.0016776180127635598,
+    "std": 0.12774650752544403,
+    "min": -0.3843894898891449,
+    "max": 0.4269278943538666
+  },
+  "encoder.encoder.layer.10.attention.output.dense.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 18379.08984375,
+    "mean": -2.5454517526668496e-05,
+    "std": 0.040658868849277496,
+    "min": -0.2856971025466919,
+    "max": 0.2692582309246063
+  },
+  "encoder.encoder.layer.10.attention.self.key_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 305.4493408203125,
+    "mean": 0.0003259877266827971,
+    "std": 0.5355809330940247,
+    "min": -2.953558921813965,
+    "max": 2.7698347568511963
+  },
+  "encoder.encoder.layer.10.attention.self.key_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30476.888671875,
+    "mean": 0.0003085168427787721,
+    "std": 0.06570436805486679,
+    "min": -0.4338051974773407,
+    "max": 0.48455262184143066
+  },
+  "encoder.encoder.layer.10.attention.self.query_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 196.27947998046875,
+    "mean": 0.019630851224064827,
+    "std": 0.3409823775291443,
+    "min": -1.7723408937454224,
+    "max": 1.8000773191452026
+  },
+  "encoder.encoder.layer.10.attention.self.query_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30800.96875,
+    "mean": -9.965456411009654e-05,
+    "std": 0.06638141721487045,
+    "min": -0.4626171886920929,
+    "max": 0.46134981513023376
+  },
+  "encoder.encoder.layer.10.attention.self.value_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 35.78026580810547,
+    "mean": -0.0004321122542023659,
+    "std": 0.08382286131381989,
+    "min": -0.8180332183837891,
+    "max": 0.759628415107727
+  },
+  "encoder.encoder.layer.10.attention.self.value_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 18891.880859375,
+    "mean": -7.527012348873541e-05,
+    "std": 0.04136617109179497,
+    "min": -0.48666903376579285,
+    "max": 0.5447670221328735
+  },
+  "encoder.encoder.layer.10.intermediate.dense.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 890.9282836914062,
+    "mean": -0.2874816358089447,
+    "std": 0.1398685872554779,
+    "min": -0.9630047082901001,
+    "max": 0.2907821536064148
+  },
+  "encoder.encoder.layer.10.intermediate.dense.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 94179.609375,
+    "mean": -0.008341495878994465,
+    "std": 0.050669167190790176,
+    "min": -0.6290677189826965,
+    "max": 0.5695860385894775
+  },
+  "encoder.encoder.layer.10.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 14.05524730682373,
+    "mean": 0.009196310304105282,
+    "std": 0.03474928438663483,
+    "min": -0.22989268600940704,
+    "max": 0.6693465113639832
+  },
+  "encoder.encoder.layer.10.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 362.79962158203125,
+    "mean": 0.4723953306674957,
+    "std": 0.05588614568114281,
+    "min": 0.1686014086008072,
+    "max": 0.6889357566833496
+  },
+  "encoder.encoder.layer.10.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 84.08551025390625,
+    "mean": -0.0030267650727182627,
+    "std": 0.13953350484371185,
+    "min": -0.43376725912094116,
+    "max": 0.5571871995925903
+  },
+  "encoder.encoder.layer.10.output.dense.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 77816.0703125,
+    "mean": 4.543167506199097e-06,
+    "std": 0.043179016560316086,
+    "min": -7.273313522338867,
+    "max": 0.5592797994613647
+  },
+  "encoder.encoder.layer.11.attention.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 50.53666305541992,
+    "mean": 0.044989973306655884,
+    "std": 0.10623203963041306,
+    "min": -1.9023585319519043,
+    "max": 0.6179295182228088
+  },
+  "encoder.encoder.layer.11.attention.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 201.90765380859375,
+    "mean": 0.26290059089660645,
+    "std": 0.08055751025676727,
+    "min": 0.1602380871772766,
+    "max": 1.7236573696136475
+  },
+  "encoder.encoder.layer.11.attention.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 131.2360382080078,
+    "mean": 0.0006978617166168988,
+    "std": 0.2175484299659729,
+    "min": -0.6742368340492249,
+    "max": 0.7768514156341553
+  },
+  "encoder.encoder.layer.11.attention.output.dense.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 19045.826171875,
+    "mean": 2.550285898905713e-05,
+    "std": 0.04254918172955513,
+    "min": -0.33193784952163696,
+    "max": 0.277967244386673
+  },
+  "encoder.encoder.layer.11.attention.self.key_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 400.9695739746094,
+    "mean": 0.002278928877785802,
+    "std": 0.6020118594169617,
+    "min": -1.6532869338989258,
+    "max": 2.4211647510528564
+  },
+  "encoder.encoder.layer.11.attention.self.key_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30296.359375,
+    "mean": 7.966404155013151e-06,
+    "std": 0.06514882296323776,
+    "min": -0.4661175310611725,
+    "max": 0.5044713616371155
+  },
+  "encoder.encoder.layer.11.attention.self.query_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 182.73779296875,
+    "mean": -0.02367890067398548,
+    "std": 0.3082020878791809,
+    "min": -1.4072262048721313,
+    "max": 1.250616431236267
+  },
+  "encoder.encoder.layer.11.attention.self.query_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30990.7734375,
+    "mean": -0.00016161489475052804,
+    "std": 0.06660763919353485,
+    "min": -0.3860211968421936,
+    "max": 0.5683372020721436
+  },
+  "encoder.encoder.layer.11.attention.self.value_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 62.01441955566406,
+    "mean": -0.00480402447283268,
+    "std": 0.12252441048622131,
+    "min": -0.9055299162864685,
+    "max": 0.7336524128913879
+  },
+  "encoder.encoder.layer.11.attention.self.value_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 20112.697265625,
+    "mean": -9.676752961240709e-05,
+    "std": 0.04459836333990097,
+    "min": -0.7612324357032776,
+    "max": 0.5374484658241272
+  },
+  "encoder.encoder.layer.11.intermediate.dense.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 819.3333740234375,
+    "mean": -0.26464131474494934,
+    "std": 0.1159004494547844,
+    "min": -0.691871166229248,
+    "max": 0.2957577705383301
+  },
+  "encoder.encoder.layer.11.intermediate.dense.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 116262.234375,
+    "mean": -0.006629545707255602,
+    "std": 0.06249641254544258,
+    "min": -1.1376546621322632,
+    "max": 1.0509377717971802
+  },
+  "encoder.encoder.layer.11.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 53.000675201416016,
+    "mean": -0.010255485773086548,
+    "std": 0.14452847838401794,
+    "min": -1.4012656211853027,
+    "max": 1.5987976789474487
+  },
+  "encoder.encoder.layer.11.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 503.9487609863281,
+    "mean": 0.6561833024024963,
+    "std": 0.37969788908958435,
+    "min": 0.30301395058631897,
+    "max": 2.82393217086792
+  },
+  "encoder.encoder.layer.11.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 106.34918212890625,
+    "mean": -0.003647696925327182,
+    "std": 0.17939552664756775,
+    "min": -0.5771845579147339,
+    "max": 0.6410304307937622
+  },
+  "encoder.encoder.layer.11.output.dense.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 108090.6015625,
+    "mean": 0.0001336036075372249,
+    "std": 0.060081761330366135,
+    "min": -2.853701591491699,
+    "max": 2.767944097518921
+  },
+  "encoder.encoder.layer.2.attention.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 86.91766357421875,
+    "mean": 0.09970571845769882,
+    "std": 0.1456618309020996,
+    "min": -1.7818008661270142,
+    "max": 2.4120047092437744
+  },
+  "encoder.encoder.layer.2.attention.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 369.6354064941406,
+    "mean": 0.4812960922718048,
+    "std": 0.06780889630317688,
+    "min": 0.3540530800819397,
+    "max": 1.5306421518325806
+  },
+  "encoder.encoder.layer.2.attention.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 61.751739501953125,
+    "mean": -0.0009976025903597474,
+    "std": 0.10600102692842484,
+    "min": -0.35399141907691956,
+    "max": 0.970313310623169
+  },
+  "encoder.encoder.layer.2.attention.output.dense.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 17193.080078125,
+    "mean": -1.3118959031999111e-05,
+    "std": 0.03778695687651634,
+    "min": -0.30986833572387695,
+    "max": 0.7459254264831543
+  },
+  "encoder.encoder.layer.2.attention.self.key_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 311.57220458984375,
+    "mean": 0.007751815021038055,
+    "std": 0.5209094882011414,
+    "min": -1.8750813007354736,
+    "max": 1.6953037977218628
+  },
+  "encoder.encoder.layer.2.attention.self.key_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30587.447265625,
+    "mean": -0.00012019416317343712,
+    "std": 0.06642785668373108,
+    "min": -0.4602486193180084,
+    "max": 0.5021412968635559
+  },
+  "encoder.encoder.layer.2.attention.self.query_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 192.048828125,
+    "mean": -0.0036318085622042418,
+    "std": 0.32066547870635986,
+    "min": -1.2892825603485107,
+    "max": 0.8827349543571472
+  },
+  "encoder.encoder.layer.2.attention.self.query_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30845.541015625,
+    "mean": 0.0001321106101386249,
+    "std": 0.06667312234640121,
+    "min": -0.4731089174747467,
+    "max": 0.5125802755355835
+  },
+  "encoder.encoder.layer.2.attention.self.value_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 24.2738037109375,
+    "mean": -0.0026960354298353195,
+    "std": 0.07542314380407333,
+    "min": -0.7724403142929077,
+    "max": 0.49097564816474915
+  },
+  "encoder.encoder.layer.2.attention.self.value_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 17073.2109375,
+    "mean": -4.857753810938448e-05,
+    "std": 0.03722764551639557,
+    "min": -0.3885260820388794,
+    "max": 0.33413681387901306
+  },
+  "encoder.encoder.layer.2.intermediate.dense.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 1154.468505859375,
+    "mean": -0.3687163293361664,
+    "std": 0.15478913486003876,
+    "min": -2.208286762237549,
+    "max": 1.0764130353927612
+  },
+  "encoder.encoder.layer.2.intermediate.dense.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 93722.46875,
+    "mean": -0.009805483743548393,
+    "std": 0.049885351210832596,
+    "min": -0.93113774061203,
+    "max": 0.9817808866500854
+  },
+  "encoder.encoder.layer.2.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 12.873907089233398,
+    "mean": -0.01126694306731224,
+    "std": 0.05101620405912399,
+    "min": -0.7369084358215332,
+    "max": 0.715884268283844
+  },
+  "encoder.encoder.layer.2.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 370.9079284667969,
+    "mean": 0.4829530417919159,
+    "std": 0.03773942217230797,
+    "min": 0.08518949151039124,
+    "max": 0.6751402616500854
+  },
+  "encoder.encoder.layer.2.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 92.47205352783203,
+    "mean": -0.0014563655713573098,
+    "std": 0.15654054284095764,
+    "min": -0.49252554774284363,
+    "max": 0.6274356245994568
+  },
+  "encoder.encoder.layer.2.output.dense.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 83664.4765625,
+    "mean": -2.3382417566608638e-05,
+    "std": 0.04790910705924034,
+    "min": -14.099700927734375,
+    "max": 4.861487865447998
+  },
+  "encoder.encoder.layer.3.attention.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 86.7818832397461,
+    "mean": 0.10481217503547668,
+    "std": 0.10045412927865982,
+    "min": -1.947373628616333,
+    "max": 1.239635944366455
+  },
+  "encoder.encoder.layer.3.attention.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 365.09271240234375,
+    "mean": 0.47538113594055176,
+    "std": 0.26487866044044495,
+    "min": 0.34216469526290894,
+    "max": 7.500856876373291
+  },
+  "encoder.encoder.layer.3.attention.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 48.2922477722168,
+    "mean": 0.0005684260395355523,
+    "std": 0.07917618751525879,
+    "min": -0.22525233030319214,
+    "max": 0.25413522124290466
+  },
+  "encoder.encoder.layer.3.attention.output.dense.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 18954.9140625,
+    "mean": -3.466704220045358e-05,
+    "std": 0.04142912104725838,
+    "min": -0.3265232443809509,
+    "max": 0.3921777307987213
+  },
+  "encoder.encoder.layer.3.attention.self.key_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 295.5323791503906,
+    "mean": -0.025239847600460052,
+    "std": 0.47868233919143677,
+    "min": -1.8142755031585693,
+    "max": 1.6044063568115234
+  },
+  "encoder.encoder.layer.3.attention.self.key_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30152.34765625,
+    "mean": 8.345231617568061e-05,
+    "std": 0.06542559713125229,
+    "min": -0.5347210764884949,
+    "max": 0.9765679836273193
+  },
+  "encoder.encoder.layer.3.attention.self.query_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 215.15284729003906,
+    "mean": -0.013287059962749481,
+    "std": 0.35591933131217957,
+    "min": -1.2331159114837646,
+    "max": 1.2022064924240112
+  },
+  "encoder.encoder.layer.3.attention.self.query_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30676.53515625,
+    "mean": 0.00044402925414033234,
+    "std": 0.06778629869222641,
+    "min": -2.248769998550415,
+    "max": 2.124236822128296
+  },
+  "encoder.encoder.layer.3.attention.self.value_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 12.746851921081543,
+    "mean": 0.0010340738808736205,
+    "std": 0.041402529925107956,
+    "min": -0.29150187969207764,
+    "max": 0.7940810918807983
+  },
+  "encoder.encoder.layer.3.attention.self.value_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 18899.990234375,
+    "mean": 1.4627639757236466e-05,
+    "std": 0.041089270263910294,
+    "min": -0.3487066328525543,
+    "max": 0.32181867957115173
+  },
+  "encoder.encoder.layer.3.intermediate.dense.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 1127.85595703125,
+    "mean": -0.3634986877441406,
+    "std": 0.14173229038715363,
+    "min": -1.038166880607605,
+    "max": 1.0222595930099487
+  },
+  "encoder.encoder.layer.3.intermediate.dense.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 93932.1953125,
+    "mean": -0.011672395281493664,
+    "std": 0.049581948667764664,
+    "min": -0.8829388618469238,
+    "max": 0.9760448932647705
+  },
+  "encoder.encoder.layer.3.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 11.515018463134766,
+    "mean": -0.011519655585289001,
+    "std": 0.03670872002840042,
+    "min": -0.6446269750595093,
+    "max": 0.6356396675109863
+  },
+  "encoder.encoder.layer.3.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 367.47216796875,
+    "mean": 0.47847938537597656,
+    "std": 0.02942749299108982,
+    "min": 0.19783489406108856,
+    "max": 0.5916393995285034
+  },
+  "encoder.encoder.layer.3.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 133.74508666992188,
+    "mean": -0.002201301045715809,
+    "std": 0.22314485907554626,
+    "min": -0.7599639296531677,
+    "max": 1.2202973365783691
+  },
+  "encoder.encoder.layer.3.output.dense.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 84064.640625,
+    "mean": 3.958323304686928e-06,
+    "std": 0.05293997749686241,
+    "min": -40.587982177734375,
+    "max": 0.6511375308036804
+  },
+  "encoder.encoder.layer.4.attention.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 84.129150390625,
+    "mean": 0.09739545732736588,
+    "std": 0.16176223754882812,
+    "min": -3.817798137664795,
+    "max": 1.9771604537963867
+  },
+  "encoder.encoder.layer.4.attention.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 349.1223449707031,
+    "mean": 0.454586386680603,
+    "std": 0.11097603291273117,
+    "min": 0.34288617968559265,
+    "max": 2.95597505569458
+  },
+  "encoder.encoder.layer.4.attention.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 38.32528305053711,
+    "mean": 0.001344323973171413,
+    "std": 0.06338095664978027,
+    "min": -0.22738255560398102,
+    "max": 0.21809084713459015
+  },
+  "encoder.encoder.layer.4.attention.output.dense.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 19755.775390625,
+    "mean": -5.901560143684037e-06,
+    "std": 0.04320923611521721,
+    "min": -0.3979453146457672,
+    "max": 0.32695886492729187
+  },
+  "encoder.encoder.layer.4.attention.self.key_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 278.21630859375,
+    "mean": 0.00037334937951527536,
+    "std": 0.4546494781970978,
+    "min": -2.0105175971984863,
+    "max": 1.7491146326065063
+  },
+  "encoder.encoder.layer.4.attention.self.key_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 29386.177734375,
+    "mean": -0.00017910242604557425,
+    "std": 0.06366446614265442,
+    "min": -0.48173439502716064,
+    "max": 0.6510186791419983
+  },
+  "encoder.encoder.layer.4.attention.self.query_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 216.97769165039062,
+    "mean": -0.004461981356143951,
+    "std": 0.39226701855659485,
+    "min": -1.6302050352096558,
+    "max": 2.0706210136413574
+  },
+  "encoder.encoder.layer.4.attention.self.query_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 29818.95703125,
+    "mean": -5.972813596599735e-05,
+    "std": 0.064565010368824,
+    "min": -0.4844967722892761,
+    "max": 0.5032157897949219
+  },
+  "encoder.encoder.layer.4.attention.self.value_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 25.017566680908203,
+    "mean": 0.005028288811445236,
+    "std": 0.05519169941544533,
+    "min": -0.17098554968833923,
+    "max": 0.7467726469039917
+  },
+  "encoder.encoder.layer.4.attention.self.value_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 20162.974609375,
+    "mean": -0.0002284309739479795,
+    "std": 0.04366102069616318,
+    "min": -0.44122207164764404,
+    "max": 0.37207943201065063
+  },
+  "encoder.encoder.layer.4.intermediate.dense.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 1088.3392333984375,
+    "mean": -0.35042285919189453,
+    "std": 0.14639025926589966,
+    "min": -0.8080033659934998,
+    "max": 0.8385103344917297
+  },
+  "encoder.encoder.layer.4.intermediate.dense.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 91810.90625,
+    "mean": -0.011372353881597519,
+    "std": 0.04852478951215744,
+    "min": -0.43575188517570496,
+    "max": 0.5000123381614685
+  },
+  "encoder.encoder.layer.4.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 11.576192855834961,
+    "mean": -0.011217479594051838,
+    "std": 0.03666236996650696,
+    "min": -0.7054500579833984,
+    "max": 0.5511136054992676
+  },
+  "encoder.encoder.layer.4.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 368.73187255859375,
+    "mean": 0.48011961579322815,
+    "std": 0.029788291081786156,
+    "min": 0.1791922003030777,
+    "max": 0.5740525722503662
+  },
+  "encoder.encoder.layer.4.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 148.49411010742188,
+    "mean": -0.004661767277866602,
+    "std": 0.24638600647449493,
+    "min": -0.722255527973175,
+    "max": 1.567907452583313
+  },
+  "encoder.encoder.layer.4.output.dense.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 81874.1640625,
+    "mean": -2.7561860406422056e-05,
+    "std": 0.05060296133160591,
+    "min": -36.158653259277344,
+    "max": 0.9213275909423828
+  },
+  "encoder.encoder.layer.5.attention.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 83.129638671875,
+    "mean": 0.09573197364807129,
+    "std": 0.16546575725078583,
+    "min": -3.7277884483337402,
+    "max": 2.270582914352417
+  },
+  "encoder.encoder.layer.5.attention.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 351.3108825683594,
+    "mean": 0.45743605494499207,
+    "std": 0.12736301124095917,
+    "min": 0.3399270176887512,
+    "max": 3.3939127922058105
+  },
+  "encoder.encoder.layer.5.attention.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 46.31180953979492,
+    "mean": 0.0016560814110562205,
+    "std": 0.07584718614816666,
+    "min": -0.25668391585350037,
+    "max": 0.22523272037506104
+  },
+  "encoder.encoder.layer.5.attention.output.dense.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 18497.412109375,
+    "mean": 5.335820333129959e-06,
+    "std": 0.040930282324552536,
+    "min": -0.26549819111824036,
+    "max": 0.2608209550380707
+  },
+  "encoder.encoder.layer.5.attention.self.key_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 254.17727661132812,
+    "mean": -0.00870786514133215,
+    "std": 0.4304068684577942,
+    "min": -2.1748108863830566,
+    "max": 1.235155701637268
+  },
+  "encoder.encoder.layer.5.attention.self.key_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30085.1953125,
+    "mean": -0.0001994471822399646,
+    "std": 0.06470397114753723,
+    "min": -0.7839060425758362,
+    "max": 0.4678565263748169
+  },
+  "encoder.encoder.layer.5.attention.self.query_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 206.31784057617188,
+    "mean": 0.012429621070623398,
+    "std": 0.3609716594219208,
+    "min": -1.3542160987854004,
+    "max": 1.4931210279464722
+  },
+  "encoder.encoder.layer.5.attention.self.query_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30448.53125,
+    "mean": 0.00012259281356818974,
+    "std": 0.065482959151268,
+    "min": -0.4739636182785034,
+    "max": 0.4318372905254364
+  },
+  "encoder.encoder.layer.5.attention.self.value_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 24.73019027709961,
+    "mean": -0.0005675956490449607,
+    "std": 0.05183277279138565,
+    "min": -0.5841816663742065,
+    "max": 0.37510398030281067
+  },
+  "encoder.encoder.layer.5.attention.self.value_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 18472.115234375,
+    "mean": -9.69956090557389e-05,
+    "std": 0.040341347455978394,
+    "min": -0.5121396780014038,
+    "max": 0.5446928143501282
+  },
+  "encoder.encoder.layer.5.intermediate.dense.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 1057.24755859375,
+    "mean": -0.33993348479270935,
+    "std": 0.15480612218379974,
+    "min": -0.8509892225265503,
+    "max": 0.8899874687194824
+  },
+  "encoder.encoder.layer.5.intermediate.dense.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 88393.9296875,
+    "mean": -0.010927382856607437,
+    "std": 0.046774037182331085,
+    "min": -0.3817162811756134,
+    "max": 0.4770675301551819
+  },
+  "encoder.encoder.layer.5.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 12.501346588134766,
+    "mean": -0.012287992052733898,
+    "std": 0.042437050491571426,
+    "min": -0.7909045815467834,
+    "max": 0.6999658942222595
+  },
+  "encoder.encoder.layer.5.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 369.4798583984375,
+    "mean": 0.48109355568885803,
+    "std": 0.032314177602529526,
+    "min": 0.16886280477046967,
+    "max": 0.5730023980140686
+  },
+  "encoder.encoder.layer.5.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 137.35313415527344,
+    "mean": -0.0022276779636740685,
+    "std": 0.22965213656425476,
+    "min": -0.5961468815803528,
+    "max": 1.5266865491867065
+  },
+  "encoder.encoder.layer.5.output.dense.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 78043.8984375,
+    "mean": 2.3291472643904854e-06,
+    "std": 0.04564523696899414,
+    "min": -24.769119262695312,
+    "max": 0.49245765805244446
+  },
+  "encoder.encoder.layer.6.attention.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 77.7419662475586,
+    "mean": 0.08894304186105728,
+    "std": 0.15874221920967102,
+    "min": -3.6195030212402344,
+    "max": 2.1385650634765625
+  },
+  "encoder.encoder.layer.6.attention.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 348.3406066894531,
+    "mean": 0.4535684883594513,
+    "std": 0.09926073998212814,
+    "min": 0.31889113783836365,
+    "max": 2.5920400619506836
+  },
+  "encoder.encoder.layer.6.attention.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 45.647064208984375,
+    "mean": 0.002580285770818591,
+    "std": 0.075385682284832,
+    "min": -0.2567404806613922,
+    "max": 0.23163770139217377
+  },
+  "encoder.encoder.layer.6.attention.output.dense.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 17830.51953125,
+    "mean": -2.2071551939006895e-05,
+    "std": 0.03958647698163986,
+    "min": -0.22941291332244873,
+    "max": 0.2388581931591034
+  },
+  "encoder.encoder.layer.6.attention.self.key_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 265.040283203125,
+    "mean": 0.009582574479281902,
+    "std": 0.4693455696105957,
+    "min": -2.824594736099243,
+    "max": 2.1279544830322266
+  },
+  "encoder.encoder.layer.6.attention.self.key_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30132.76953125,
+    "mean": 0.00038509987643919885,
+    "std": 0.06528720259666443,
+    "min": -0.5416380763053894,
+    "max": 0.48600107431411743
+  },
+  "encoder.encoder.layer.6.attention.self.query_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 195.2128143310547,
+    "mean": -0.008744093589484692,
+    "std": 0.34589940309524536,
+    "min": -1.8180257081985474,
+    "max": 1.5160036087036133
+  },
+  "encoder.encoder.layer.6.attention.self.query_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30458.33203125,
+    "mean": -0.0004944661050103605,
+    "std": 0.06598382443189621,
+    "min": -0.5274505019187927,
+    "max": 0.46716487407684326
+  },
+  "encoder.encoder.layer.6.attention.self.value_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 22.636699676513672,
+    "mean": -0.0010263315634801984,
+    "std": 0.05216945707798004,
+    "min": -0.46940556168556213,
+    "max": 0.520649254322052
+  },
+  "encoder.encoder.layer.6.attention.self.value_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 17765.259765625,
+    "mean": -9.40859317779541e-05,
+    "std": 0.039079535752534866,
+    "min": -0.49815070629119873,
+    "max": 0.594770610332489
+  },
+  "encoder.encoder.layer.6.intermediate.dense.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 1065.0948486328125,
+    "mean": -0.3443860113620758,
+    "std": 0.14804276823997498,
+    "min": -0.890415370464325,
+    "max": 0.5397475957870483
+  },
+  "encoder.encoder.layer.6.intermediate.dense.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 85464.203125,
+    "mean": -0.010504919104278088,
+    "std": 0.04523320496082306,
+    "min": -0.47443801164627075,
+    "max": 0.6117534041404724
+  },
+  "encoder.encoder.layer.6.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 11.084939956665039,
+    "mean": -0.007760940119624138,
+    "std": 0.04764740541577339,
+    "min": -0.724166989326477,
+    "max": 0.9310998916625977
+  },
+  "encoder.encoder.layer.6.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 375.8452453613281,
+    "mean": 0.4893818199634552,
+    "std": 0.03465713933110237,
+    "min": 0.20192468166351318,
+    "max": 0.5923005938529968
+  },
+  "encoder.encoder.layer.6.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 157.7991943359375,
+    "mean": -0.003281848505139351,
+    "std": 0.2700723111629486,
+    "min": -0.8128726482391357,
+    "max": 1.9600188732147217
+  },
+  "encoder.encoder.layer.6.output.dense.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 74440.6953125,
+    "mean": 1.0806790669448674e-05,
+    "std": 0.04563484713435173,
+    "min": -31.715591430664062,
+    "max": 0.517799973487854
+  },
+  "encoder.encoder.layer.7.attention.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 73.83262634277344,
+    "mean": 0.0846351608633995,
+    "std": 0.16668102145195007,
+    "min": -3.429121971130371,
+    "max": 2.8478810787200928
+  },
+  "encoder.encoder.layer.7.attention.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 339.19378662109375,
+    "mean": 0.4416585862636566,
+    "std": 0.08720273524522781,
+    "min": 0.3167901337146759,
+    "max": 1.8675023317337036
+  },
+  "encoder.encoder.layer.7.attention.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 54.01118850708008,
+    "mean": 0.003929124679416418,
+    "std": 0.08826008439064026,
+    "min": -0.26858869194984436,
+    "max": 0.3369188606739044
+  },
+  "encoder.encoder.layer.7.attention.output.dense.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 17039.28515625,
+    "mean": -3.2881350762181683e-06,
+    "std": 0.03802715986967087,
+    "min": -0.24655769765377045,
+    "max": 0.23624563217163086
+  },
+  "encoder.encoder.layer.7.attention.self.key_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 258.08111572265625,
+    "mean": -0.010071978904306889,
+    "std": 0.46107912063598633,
+    "min": -1.8661752939224243,
+    "max": 3.7329952716827393
+  },
+  "encoder.encoder.layer.7.attention.self.key_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30571.791015625,
+    "mean": 0.00015579842147417367,
+    "std": 0.06593215465545654,
+    "min": -0.5496066212654114,
+    "max": 0.6187717318534851
+  },
+  "encoder.encoder.layer.7.attention.self.query_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 207.31842041015625,
+    "mean": -0.00020549849432427436,
+    "std": 0.3602190911769867,
+    "min": -1.4612195491790771,
+    "max": 1.6885608434677124
+  },
+  "encoder.encoder.layer.7.attention.self.query_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30535.171875,
+    "mean": 0.00015118715236894786,
+    "std": 0.06573540717363358,
+    "min": -0.43949800729751587,
+    "max": 0.4475748538970947
+  },
+  "encoder.encoder.layer.7.attention.self.value_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 28.60466766357422,
+    "mean": 0.0033158808946609497,
+    "std": 0.06981837749481201,
+    "min": -0.7545142769813538,
+    "max": 0.7251969575881958
+  },
+  "encoder.encoder.layer.7.attention.self.value_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 16701.50390625,
+    "mean": -3.0871862691128626e-05,
+    "std": 0.03656633570790291,
+    "min": -0.5679973363876343,
+    "max": 0.5470472574234009
+  },
+  "encoder.encoder.layer.7.intermediate.dense.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 1013.364990234375,
+    "mean": -0.32699161767959595,
+    "std": 0.15131743252277374,
+    "min": -0.9275059103965759,
+    "max": 0.8407561779022217
+  },
+  "encoder.encoder.layer.7.intermediate.dense.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 83304.203125,
+    "mean": -0.009843067266047001,
+    "std": 0.04434412717819214,
+    "min": -0.4833592474460602,
+    "max": 0.6092992424964905
+  },
+  "encoder.encoder.layer.7.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 10.342889785766602,
+    "mean": -0.006296932697296143,
+    "std": 0.03439192473888397,
+    "min": -0.3209570348262787,
+    "max": 0.6504340171813965
+  },
+  "encoder.encoder.layer.7.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 409.3359375,
+    "mean": 0.532989501953125,
+    "std": 0.04585038498044014,
+    "min": 0.22896665334701538,
+    "max": 0.6961937546730042
+  },
+  "encoder.encoder.layer.7.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 153.55958557128906,
+    "mean": -0.003503818064928055,
+    "std": 0.2543168067932129,
+    "min": -0.7226108312606812,
+    "max": 1.3405417203903198
+  },
+  "encoder.encoder.layer.7.output.dense.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 72365.40625,
+    "mean": -1.0937715160252992e-05,
+    "std": 0.04143034666776657,
+    "min": -18.42659568786621,
+    "max": 0.9891437888145447
+  },
+  "encoder.encoder.layer.8.attention.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 62.075843811035156,
+    "mean": 0.069241464138031,
+    "std": 0.16171123087406158,
+    "min": -3.541797399520874,
+    "max": 2.487150192260742
+  },
+  "encoder.encoder.layer.8.attention.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 322.6248474121094,
+    "mean": 0.4200844466686249,
+    "std": 0.1220364198088646,
+    "min": 0.28211042284965515,
+    "max": 3.1531286239624023
+  },
+  "encoder.encoder.layer.8.attention.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 68.185546875,
+    "mean": 0.0037667767610400915,
+    "std": 0.11136586219072342,
+    "min": -0.4059998393058777,
+    "max": 0.3685474097728729
+  },
+  "encoder.encoder.layer.8.attention.output.dense.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 16770.275390625,
+    "mean": 5.293630920277792e-07,
+    "std": 0.037107642740011215,
+    "min": -0.2575259506702423,
+    "max": 0.2463812381029129
+  },
+  "encoder.encoder.layer.8.attention.self.key_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 292.54656982421875,
+    "mean": 0.012266566045582294,
+    "std": 0.5064927339553833,
+    "min": -3.0032947063446045,
+    "max": 1.8917102813720703
+  },
+  "encoder.encoder.layer.8.attention.self.key_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30372.98828125,
+    "mean": 0.0008820677176117897,
+    "std": 0.06564413011074066,
+    "min": -0.5249486565589905,
+    "max": 0.5161387324333191
+  },
+  "encoder.encoder.layer.8.attention.self.query_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 204.19705200195312,
+    "mean": -0.007095184177160263,
+    "std": 0.36273473501205444,
+    "min": -1.4010190963745117,
+    "max": 1.786536693572998
+  },
+  "encoder.encoder.layer.8.attention.self.query_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30532.232421875,
+    "mean": -0.0011562556028366089,
+    "std": 0.06583824753761292,
+    "min": -0.47645971179008484,
+    "max": 0.4334390461444855
+  },
+  "encoder.encoder.layer.8.attention.self.value_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 30.066272735595703,
+    "mean": 0.0014126327587291598,
+    "std": 0.07665996998548508,
+    "min": -0.6898736953735352,
+    "max": 0.8725986480712891
+  },
+  "encoder.encoder.layer.8.attention.self.value_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 16256.21484375,
+    "mean": 8.938213431974873e-05,
+    "std": 0.035406358540058136,
+    "min": -0.5793686509132385,
+    "max": 0.534034788608551
+  },
+  "encoder.encoder.layer.8.intermediate.dense.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 981.8836669921875,
+    "mean": -0.315541535615921,
+    "std": 0.14651727676391602,
+    "min": -0.9310064315795898,
+    "max": 0.9022318124771118
+  },
+  "encoder.encoder.layer.8.intermediate.dense.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 83871.21875,
+    "mean": -0.00890226662158966,
+    "std": 0.04471832141280174,
+    "min": -0.39539647102355957,
+    "max": 0.6060929298400879
+  },
+  "encoder.encoder.layer.8.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 9.217597961425781,
+    "mean": -0.007762657478451729,
+    "std": 0.040868375450372696,
+    "min": -0.6590232849121094,
+    "max": 0.836109459400177
+  },
+  "encoder.encoder.layer.8.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 340.317626953125,
+    "mean": 0.44312191009521484,
+    "std": 0.041536957025527954,
+    "min": 0.14085398614406586,
+    "max": 0.5439668297767639
+  },
+  "encoder.encoder.layer.8.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 132.64219665527344,
+    "mean": -0.004476606845855713,
+    "std": 0.2185416966676712,
+    "min": -0.7485953569412231,
+    "max": 0.9810683131217957
+  },
+  "encoder.encoder.layer.8.output.dense.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 72542.9296875,
+    "mean": -5.763523859059205e-06,
+    "std": 0.042732611298561096,
+    "min": -23.48301124572754,
+    "max": 1.079809546470642
+  },
+  "encoder.encoder.layer.9.attention.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 59.34474182128906,
+    "mean": 0.0648021399974823,
+    "std": 0.18173852562904358,
+    "min": -4.2931013107299805,
+    "max": 2.4452626705169678
+  },
+  "encoder.encoder.layer.9.attention.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 302.64752197265625,
+    "mean": 0.3940722942352295,
+    "std": 0.11840691417455673,
+    "min": 0.22815582156181335,
+    "max": 2.5013763904571533
+  },
+  "encoder.encoder.layer.9.attention.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 39.51481628417969,
+    "mean": 0.004175920505076647,
+    "std": 0.0661005899310112,
+    "min": -0.2632332146167755,
+    "max": 0.1972053498029709
+  },
+  "encoder.encoder.layer.9.attention.output.dense.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 19571.947265625,
+    "mean": -2.4571336325607263e-05,
+    "std": 0.04403483495116234,
+    "min": -0.3185972571372986,
+    "max": 0.3321770131587982
+  },
+  "encoder.encoder.layer.9.attention.self.key_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 197.5083770751953,
+    "mean": -0.002695932984352112,
+    "std": 0.3261324167251587,
+    "min": -0.9516087770462036,
+    "max": 1.1665385961532593
+  },
+  "encoder.encoder.layer.9.attention.self.key_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30461.548828125,
+    "mean": -0.0008969987975433469,
+    "std": 0.06554011255502701,
+    "min": -0.47093522548675537,
+    "max": 0.4893089234828949
+  },
+  "encoder.encoder.layer.9.attention.self.query_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 185.06820678710938,
+    "mean": -0.00855511799454689,
+    "std": 0.32047146558761597,
+    "min": -1.4838731288909912,
+    "max": 1.2794722318649292
+  },
+  "encoder.encoder.layer.9.attention.self.query_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 30903.28125,
+    "mean": 0.00029373320285230875,
+    "std": 0.06652532517910004,
+    "min": -0.6151862144470215,
+    "max": 0.6361176371574402
+  },
+  "encoder.encoder.layer.9.attention.self.value_proj.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 21.30672264099121,
+    "mean": -0.002375795738771558,
+    "std": 0.04579031839966774,
+    "min": -0.4350985586643219,
+    "max": 0.22826151549816132
+  },
+  "encoder.encoder.layer.9.attention.self.value_proj.weight": {
+    "shape": [
+      768,
+      768
+    ],
+    "l1_sum": 20306.9453125,
+    "mean": 0.0001079776047845371,
+    "std": 0.0444083996117115,
+    "min": -0.3555390536785126,
+    "max": 0.5855291485786438
+  },
+  "encoder.encoder.layer.9.intermediate.dense.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 951.8468017578125,
+    "mean": -0.30652570724487305,
+    "std": 0.1470082700252533,
+    "min": -1.0940062999725342,
+    "max": 0.7240715622901917
+  },
+  "encoder.encoder.layer.9.intermediate.dense.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 85965.90625,
+    "mean": -0.008749076165258884,
+    "std": 0.04609525948762894,
+    "min": -0.5228443145751953,
+    "max": 0.7044945955276489
+  },
+  "encoder.encoder.layer.9.output.LayerNorm.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 9.6968412399292,
+    "mean": -0.0034732159692794085,
+    "std": 0.04783960059285164,
+    "min": -0.15178434550762177,
+    "max": 1.2091609239578247
+  },
+  "encoder.encoder.layer.9.output.LayerNorm.weight": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 402.1190185546875,
+    "mean": 0.523592472076416,
+    "std": 0.05132273584604263,
+    "min": 0.24899603426456451,
+    "max": 0.7279815673828125
+  },
+  "encoder.encoder.layer.9.output.dense.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 117.12454986572266,
+    "mean": -0.006103210151195526,
+    "std": 0.1918725222349167,
+    "min": -0.6214064955711365,
+    "max": 0.8545646071434021
+  },
+  "encoder.encoder.layer.9.output.dense.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 74412.515625,
+    "mean": -1.3159688023733906e-05,
+    "std": 0.04205808788537979,
+    "min": -14.051088333129883,
+    "max": 0.8093826174736023
+  },
+  "encoder.encoder.rel_embeddings.weight": {
+    "shape": [
+      512,
+      768
+    ],
+    "l1_sum": 22767.640625,
+    "mean": 0.017844581976532936,
+    "std": 0.09555377066135406,
+    "min": -0.48987653851509094,
+    "max": 0.44529977440834045
+  },
+  "span_rep.span_rep_layer.out_project.0.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 45.300846099853516,
+    "mean": 0.001200560131110251,
+    "std": 0.018544822931289673,
+    "min": -0.053220588713884354,
+    "max": 0.07560141384601593
+  },
+  "span_rep.span_rep_layer.out_project.0.weight": {
+    "shape": [
+      3072,
+      1536
+    ],
+    "l1_sum": 63639.9609375,
+    "mean": 0.001765120541676879,
+    "std": 0.019055800512433052,
+    "min": -0.5070874691009521,
+    "max": 0.30577564239501953
+  },
+  "span_rep.span_rep_layer.out_project.3.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 35.459869384765625,
+    "mean": -0.0020680648740381002,
+    "std": 0.05586158484220505,
+    "min": -0.16506336629390717,
+    "max": 0.13328909873962402
+  },
+  "span_rep.span_rep_layer.out_project.3.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 32214.8359375,
+    "mean": 9.93274079519324e-06,
+    "std": 0.020710444077849388,
+    "min": -0.34900420904159546,
+    "max": 0.36334705352783203
+  },
+  "span_rep.span_rep_layer.project_end.0.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 56.178985595703125,
+    "mean": -0.011319718323647976,
+    "std": 0.019636986777186394,
+    "min": -0.06406337767839432,
+    "max": 0.07920240610837936
+  },
+  "span_rep.span_rep_layer.project_end.0.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 54267.75,
+    "mean": 0.0003911961102858186,
+    "std": 0.028971638530492783,
+    "min": -0.18478521704673767,
+    "max": 0.18705591559410095
+  },
+  "span_rep.span_rep_layer.project_end.3.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 20.326019287109375,
+    "mean": -0.02008202113211155,
+    "std": 0.035065941512584686,
+    "min": -0.19382831454277039,
+    "max": 0.06367572396993637
+  },
+  "span_rep.span_rep_layer.project_end.3.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 44789.65625,
+    "mean": 0.007674125488847494,
+    "std": 0.031146114692091942,
+    "min": -0.30537137389183044,
+    "max": 1.0535484552383423
+  },
+  "span_rep.span_rep_layer.project_start.0.bias": {
+    "shape": [
+      3072
+    ],
+    "l1_sum": 54.625160217285156,
+    "mean": -0.01062645111232996,
+    "std": 0.019175836816430092,
+    "min": -0.06410101801156998,
+    "max": 0.08677491545677185
+  },
+  "span_rep.span_rep_layer.project_start.0.weight": {
+    "shape": [
+      3072,
+      768
+    ],
+    "l1_sum": 53672.66796875,
+    "mean": 0.0003819804114755243,
+    "std": 0.028679315000772476,
+    "min": -0.169685497879982,
+    "max": 0.19273412227630615
+  },
+  "span_rep.span_rep_layer.project_start.3.bias": {
+    "shape": [
+      768
+    ],
+    "l1_sum": 20.381366729736328,
+    "mean": -0.019582407549023628,
+    "std": 0.03613004833459854,
+    "min": -0.18961738049983978,
+    "max": 0.09606728702783585
+  },
+  "span_rep.span_rep_layer.project_start.3.weight": {
+    "shape": [
+      768,
+      3072
+    ],
+    "l1_sum": 43419.15625,
+    "mean": 0.0065133580937981606,
+    "std": 0.03136376291513443,
+    "min": -0.2651170790195465,
+    "max": 1.0517311096191406
+  }
+}

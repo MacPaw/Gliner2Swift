@@ -35,7 +35,7 @@ import MLXNN
 /// not absolute position embeddings in the embedding layer.
 public class DeBERTaEmbeddings: Module {
     /// Word embedding table
-    public let wordEmbeddings: Embedding
+    @ModuleInfo public var wordEmbeddings: Embedding
 
     /// Layer normalization (CRITICAL: eps=1e-7 for DeBERTa)
     public let layerNorm: LayerNorm

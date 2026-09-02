@@ -60,12 +60,31 @@ public class GLiNER2 {
     ///
     /// - Parameters:
     ///   - pathOrRepo: HuggingFace repo ID or local path
+    ///   - dtype: Floating-point policy for the loaded weights. `.auto` keeps the
+    ///     checkpoint's own dtype, which is what the shipped fp16 model wants.
+    ///   - quantization: Optional 8-bit encoder quantization. Off by default; `.int8`
+    ///     cuts memory substantially but not for free (see `QuantizationPolicy`).
+    ///   - gpuCache: MLX allocator cache policy. Process-global, so it defaults to
+    ///     `.unchanged`; pass `.platformDefault` in an app that owns the process.
+    ///   - compileEncoder: Trace the encoder forward with `MLX.compile` and bucket-pad
+    ///     sequence lengths so the per-shape cache hits. Off by default — it changes fp16
+    ///     results at the ULP level (see `benchmarks/BASELINE.md`).
+    ///   - strict: When true, throw if the checkpoint is missing critical weights instead
+    ///     of silently keeping random initialization. Off by default.
+    ///   - hfToken: Optional HuggingFace token for gated/private repos (env fallback).
     ///   - progressHandler: Optional progress callback for Hub downloads
     /// - Returns: Initialized GLiNER2 model
     public static func fromPretrained(
         _ pathOrRepo: String,
+        dtype: DTypePolicy = .auto,
+        quantization: QuantizationPolicy = .none,
+        gpuCache: GPUCachePolicy = .unchanged,
+        compileEncoder: Bool = false,
+        strict: Bool = false,
+        hfToken: String? = nil,
         progressHandler: @Sendable @escaping (Progress) -> Void = { _ in }
     ) async throws -> GLiNER2 {
+        gpuCache.apply()
         // Determine if local path or HuggingFace repo
         let isLocalPath = FileManager.default.fileExists(atPath: pathOrRepo)
 
@@ -76,6 +95,7 @@ public class GLiNER2 {
             // Download from HuggingFace Hub (uses shared ~/.cache/huggingface/hub/ cache)
             baseUrl = try await downloadModelDirectory(
                 repoId: pathOrRepo,
+                hfToken: hfToken,
                 progressHandler: progressHandler
             )
         }
@@ -126,22 +146,37 @@ public class GLiNER2 {
 
         // 4. Load weights - try combined file first, fall back to split files
         if let combinedUrl = combinedWeightsUrl {
-            try gliner2.model.loadWeights(from: combinedUrl)
+            try gliner2.model.loadWeights(from: combinedUrl, dtype: dtype, strict: strict)
             gliner2.baseWeightsUrl = combinedUrl
         } else if let modelUrl = splitModelWeightsUrl,
                   let encoderUrl = splitEncoderWeightsUrl {
             try gliner2.model.loadWeights(
                 modelWeightsUrl: modelUrl,
-                encoderWeightsUrl: encoderUrl
+                encoderWeightsUrl: encoderUrl,
+                dtype: dtype
             )
             gliner2.baseWeightsUrl = modelUrl
         } else {
             throw GLiNER2Error.fileNotFound("model weights")
         }
 
-        // 5. Set to evaluation mode (disables dropout)
+        // 5. Runtime quantization, after the real weights are in place — but skip it if the
+        //    checkpoint on disk was already quantized (loadWeights builds and fills the
+        //    quantized structure itself), so a pre-quantized model is not quantized twice.
+        if !gliner2.model.isQuantized {
+            gliner2.model.quantize(quantization)
+        }
+
+        // 6. Set to evaluation mode (disables dropout)
         gliner2.model.train(false)
         gliner2.model.freeze()
+
+        // 7. Optional compiled encoder. Bucketed padding comes with it: without stable
+        //    shapes the compile cache misses on nearly every call.
+        if compileEncoder {
+            gliner2.processor.padsSequenceLengthToBuckets = true
+            gliner2.model.setCompiledEncoderEnabled(true)
+        }
 
         return gliner2
     }
@@ -182,6 +217,13 @@ public class GLiNER2 {
     public func loadAdapter(from adapterPath: String) throws {
         guard let baseUrl = baseWeightsUrl else {
             throw GLiNER2Error.weightLoadingFailed("Base weights URL not available for adapter merging")
+        }
+        guard !model.isQuantized else {
+            // Merging writes full-precision matrices into the encoder's Linear layers;
+            // against QuantizedLinear's packed weights that corrupts the model silently.
+            throw GLiNER2Error.weightLoadingFailed(
+                "Cannot load a LoRA adapter into a quantized model — load the adapter first, "
+                + "or reload without quantization")
         }
         let adapterUrl = URL(fileURLWithPath: adapterPath)
         try model.loadWeightsWithLoRA(baseWeightsUrl: baseUrl, adapterPath: adapterUrl)
@@ -238,20 +280,24 @@ public class GLiNER2 {
     ///   - threshold: Confidence threshold (default: 0.5)
     ///   - includeConfidence: Include confidence scores
     ///   - includeSpans: Include character-level positions
+    ///   - maxLen: Optional cap on whitespace-split text words; longer input is truncated
+    ///     to the first `maxLen` words before encoding
     /// - Returns: Extraction results
     public func extract(
         text: String,
         schema: Schema,
         threshold: Float = 0.5,
         includeConfidence: Bool = false,
-        includeSpans: Bool = false
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
     ) -> [String: Any] {
         let results = batchExtract(
             texts: [text],
             schema: schema,
             threshold: threshold,
             includeConfidence: includeConfidence,
-            includeSpans: includeSpans
+            includeSpans: includeSpans,
+            maxLen: maxLen
         )
         return results.first ?? [:]
     }
@@ -265,6 +311,7 @@ public class GLiNER2 {
     ///   - threshold: Confidence threshold
     ///   - includeConfidence: Include confidence scores
     ///   - includeSpans: Include character-level positions
+    ///   - maxLen: Optional cap on whitespace-split text words per input
     /// - Returns: List of extraction results
     public func batchExtract(
         texts: [String],
@@ -272,7 +319,8 @@ public class GLiNER2 {
         batchSize: Int = 8,
         threshold: Float = 0.5,
         includeConfidence: Bool = false,
-        includeSpans: Bool = false
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
     ) -> [[String: Any]] {
         guard !texts.isEmpty else { return [] }
 
@@ -283,20 +331,51 @@ public class GLiNER2 {
         var records: [TransformedRecord] = []
         for text in texts {
             let normalizedText = normalizeText(text)
-            let record = processor.transform(text: normalizedText, schema: internalSchemaDict)
+            let record = processor.transform(text: normalizedText, schema: internalSchemaDict, maxLen: maxLen)
             records.append(record)
         }
 
-        // Process in batches
+        // Process in batches, one batch ahead of the decoder.
+        //
+        // Decoding is a long stretch of CPU work — span scanning, string slicing, result
+        // assembly — punctuated by score readbacks. Scheduling the next batch's encoder
+        // before that work starts gives the GPU something to do during it, so a multi-batch
+        // call trends towards max(encode, decode) rather than their sum. Safe only because
+        // nothing in decode reads back before the span scores (Phase 2.1/2.2/2.6): an
+        // earlier blocking readback would sit in front of the queued encode on MLX's
+        // single FIFO stream and absorb exactly the overlap this is buying.
         var allResults: [[String: Any]] = []
 
-        for batchStart in stride(from: 0, to: records.count, by: batchSize) {
-            let batchEnd = min(batchStart + batchSize, records.count)
-            let batchRecords = Array(records[batchStart..<batchEnd])
-            let batch = processor.collateBatch(batchRecords)
+        // Collated one batch ahead, never all at once — a long text list would otherwise
+        // hold every batch's padded tensors at the same time.
+        let ranges = stride(from: 0, to: records.count, by: batchSize)
+            .map { $0 ..< min($0 + batchSize, records.count) }
 
-            let batchResults = extractFromBatch(
-                batch: batch,
+        func collate(_ range: Range<Int>) -> PreprocessedBatch {
+            processor.collateBatch(Array(records[range]))
+        }
+
+        var scheduled: (batch: PreprocessedBatch, hiddenStates: MLXArray)? = nil
+
+        for (index, range) in ranges.enumerated() {
+            let current: (batch: PreprocessedBatch, hiddenStates: MLXArray)
+            if let scheduled {
+                current = scheduled
+            } else {
+                let batch = collate(range)
+                current = (batch, encodeBatch(batch))
+            }
+
+            if index + 1 < ranges.count {
+                let next = collate(ranges[index + 1])
+                scheduled = (next, encodeBatch(next))
+            } else {
+                scheduled = nil
+            }
+
+            let batchResults = decodeBatch(
+                batch: current.batch,
+                hiddenStates: current.hiddenStates,
                 threshold: threshold,
                 metadata: schema.metadata,
                 includeConfidence: includeConfidence,
@@ -317,7 +396,8 @@ public class GLiNER2 {
         entityTypes: [String],
         threshold: Float = 0.5,
         includeConfidence: Bool = false,
-        includeSpans: Bool = false
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
     ) -> [String: Any] {
         let schema = createSchema().entities(entityTypes)
         return extract(
@@ -325,26 +405,71 @@ public class GLiNER2 {
             schema: schema,
             threshold: threshold,
             includeConfidence: includeConfidence,
-            includeSpans: includeSpans
+            includeSpans: includeSpans,
+            maxLen: maxLen
         )
     }
 
-    /// Classify text
+    /// One classification task's configuration, for the multi-task `classifyText` form.
+    public struct ClassificationTask {
+        public let task: String
+        public let labels: [String]
+        public let multiLabel: Bool
+        public let threshold: Float
+        public let prompt: String?
+        public let labelDescriptions: [String: String]?
+        public let examples: [(input: String, output: String)]?
+
+        public init(
+            task: String, labels: [String], multiLabel: Bool = false, threshold: Float = 0.5,
+            prompt: String? = nil, labelDescriptions: [String: String]? = nil,
+            examples: [(input: String, output: String)]? = nil
+        ) {
+            self.task = task; self.labels = labels; self.multiLabel = multiLabel
+            self.threshold = threshold; self.prompt = prompt
+            self.labelDescriptions = labelDescriptions; self.examples = examples
+        }
+    }
+
+    /// Classify text — single task, optionally with a prompt, per-label descriptions, and
+    /// few-shot examples (Phase 6.5).
     public func classifyText(
         text: String,
         task: String,
         labels: [String],
         multiLabel: Bool = false,
         threshold: Float = 0.5,
-        includeConfidence: Bool = false
+        includeConfidence: Bool = false,
+        prompt: String? = nil,
+        labelDescriptions: [String: String]? = nil,
+        examples: [(input: String, output: String)]? = nil,
+        maxLen: Int? = nil
     ) -> [String: Any] {
-        let schema = createSchema().classification(task: task, labels: labels, multiLabel: multiLabel)
-        return extract(
-            text: text,
-            schema: schema,
-            threshold: threshold,
-            includeConfidence: includeConfidence
-        )
+        let schema = createSchema().classification(
+            task: task, labels: labels, multiLabel: multiLabel, threshold: threshold,
+            prompt: prompt, labelDescriptions: labelDescriptions, examples: examples)
+        return extract(text: text, schema: schema, threshold: threshold,
+                       includeConfidence: includeConfidence, maxLen: maxLen)
+    }
+
+    /// Classify text against several tasks at once (Python engine.py:1166 — `tasks` dict).
+    /// Each task becomes a top-level key in the result.
+    public func classifyText(
+        text: String,
+        tasks: [ClassificationTask],
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        maxLen: Int? = nil
+    ) -> [String: Any] {
+        let schema = createSchema()
+        for task in tasks {
+            schema.classification(
+                task: task.task, labels: task.labels, multiLabel: task.multiLabel,
+                threshold: task.threshold, prompt: task.prompt,
+                labelDescriptions: task.labelDescriptions, examples: task.examples)
+        }
+        return extract(text: text, schema: schema, threshold: threshold,
+                       includeConfidence: includeConfidence, maxLen: maxLen)
     }
 
     /// Extract relations from text
@@ -353,7 +478,8 @@ public class GLiNER2 {
         relationTypes: [String],
         threshold: Float = 0.5,
         includeConfidence: Bool = false,
-        includeSpans: Bool = false
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
     ) -> [String: Any] {
         let schema = createSchema().relations(relationTypes)
         return extract(
@@ -361,7 +487,165 @@ public class GLiNER2 {
             schema: schema,
             threshold: threshold,
             includeConfidence: includeConfidence,
-            includeSpans: includeSpans
+            includeSpans: includeSpans,
+            maxLen: maxLen
+        )
+    }
+
+    /// Batch extract with one schema **per text** (Python engine.py:358 — schemas may be a
+    /// list matching the texts). Each text is independent, so this is exactly the per-text
+    /// results Python's list-of-schemas path produces. A single dict or list of dicts is
+    /// handled by wrapping with `Schema.fromDict`.
+    ///
+    /// - Precondition: `schemas.count == texts.count`.
+    public func batchExtract(
+        texts: [String],
+        schemas: [Schema],
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
+    ) -> [[String: Any]] {
+        precondition(schemas.count == texts.count,
+                     "schemas count (\(schemas.count)) must equal texts count (\(texts.count))")
+        return zip(texts, schemas).map { text, schema in
+            extract(text: text, schema: schema, threshold: threshold,
+                    includeConfidence: includeConfidence, includeSpans: includeSpans, maxLen: maxLen)
+        }
+    }
+
+    // MARK: - JSON Extraction (field-spec mini-language)
+
+    /// Parsed pieces of one `extractJson` field spec.
+    public struct JSONFieldSpec: Equatable {
+        public let name: String
+        public let dtype: String
+        public let choices: [String]?
+        public let description: String?
+    }
+
+    /// Parse a single field spec of the form `name::dtype::[a|b]::desc` (Python
+    /// engine.py:1139-1220). Parts after the name are matched by shape, not strict
+    /// position, so any of dtype / choices / description may be omitted or reordered:
+    /// `[a|b|c]` is choices, `str`/`list` is the dtype, anything else is the description.
+    /// A bare `name` defaults to a single-value (`str`) field with no choices.
+    public static func parseJSONFieldSpec(_ spec: String) -> JSONFieldSpec {
+        let parts = spec.components(separatedBy: "::")
+        let name = parts[0].trimmingCharacters(in: .whitespaces)
+        var dtype = "str"
+        var choices: [String]?
+        var description: String?
+        for raw in parts.dropFirst() {
+            let part = raw.trimmingCharacters(in: .whitespaces)
+            if part.hasPrefix("[") && part.hasSuffix("]") {
+                choices = String(part.dropFirst().dropLast())
+                    .components(separatedBy: "|")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+            } else if part == "str" || part == "list" {
+                dtype = part
+            } else if !part.isEmpty {
+                description = part
+            }
+        }
+        return JSONFieldSpec(name: name, dtype: dtype, choices: choices, description: description)
+    }
+
+    /// Build a one-structure schema from field specs in the mini-language.
+    private func jsonSchema(name: String, fields: [String]) -> Schema {
+        let builder = createSchema().structure(name)
+        for spec in fields {
+            let parsed = Self.parseJSONFieldSpec(spec)
+            builder.field(parsed.name, dtype: parsed.dtype,
+                          choices: parsed.choices, description: parsed.description)
+        }
+        return builder.done()
+    }
+
+    /// Extract a single JSON-like structure whose fields are given in the
+    /// `name::dtype::[a|b]::desc` mini-language. (Python engine.py:1139-1220)
+    public func extractJson(
+        text: String,
+        name: String,
+        fields: [String],
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
+    ) -> [String: Any] {
+        extract(text: text, schema: jsonSchema(name: name, fields: fields),
+                threshold: threshold, includeConfidence: includeConfidence,
+                includeSpans: includeSpans, maxLen: maxLen)
+    }
+
+    /// Batch JSON extraction. (Python engine.py:1151)
+    public func batchExtractJson(
+        texts: [String],
+        name: String,
+        fields: [String],
+        batchSize: Int = 8,
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
+    ) -> [[String: Any]] {
+        batchExtract(texts: texts, schema: jsonSchema(name: name, fields: fields),
+                     batchSize: batchSize, threshold: threshold,
+                     includeConfidence: includeConfidence, includeSpans: includeSpans, maxLen: maxLen)
+    }
+
+    // MARK: - Batch Convenience Methods
+
+    /// Batch entity extraction — one schema, many texts. (Python engine.py:1074)
+    public func batchExtractEntities(
+        texts: [String],
+        entityTypes: [String],
+        batchSize: Int = 8,
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
+    ) -> [[String: Any]] {
+        batchExtract(
+            texts: texts, schema: createSchema().entities(entityTypes), batchSize: batchSize,
+            threshold: threshold, includeConfidence: includeConfidence,
+            includeSpans: includeSpans, maxLen: maxLen
+        )
+    }
+
+    /// Batch text classification. (Python engine.py:1124)
+    public func batchClassifyText(
+        texts: [String],
+        task: String,
+        labels: [String],
+        multiLabel: Bool = false,
+        batchSize: Int = 8,
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        maxLen: Int? = nil
+    ) -> [[String: Any]] {
+        batchExtract(
+            texts: texts,
+            schema: createSchema().classification(task: task, labels: labels, multiLabel: multiLabel),
+            batchSize: batchSize, threshold: threshold, includeConfidence: includeConfidence,
+            maxLen: maxLen
+        )
+    }
+
+    /// Batch relation extraction. (Python engine.py:1171)
+    public func batchExtractRelations(
+        texts: [String],
+        relationTypes: [String],
+        batchSize: Int = 8,
+        threshold: Float = 0.5,
+        includeConfidence: Bool = false,
+        includeSpans: Bool = false,
+        maxLen: Int? = nil
+    ) -> [[String: Any]] {
+        batchExtract(
+            texts: texts, schema: createSchema().relations(relationTypes), batchSize: batchSize,
+            threshold: threshold, includeConfidence: includeConfidence,
+            includeSpans: includeSpans, maxLen: maxLen
         )
     }
 
@@ -378,6 +662,21 @@ public class GLiNER2 {
         return normalized
     }
 
+    /// Run the encoder and queue it, without waiting for the result.
+    ///
+    /// Every CPU-side input the decode path needs (input ids, marker positions, word
+    /// indices) is materialized during tokenization, so nothing downstream reads back
+    /// early and forces the wait; the first real sync is the span-score readback. Dropping
+    /// the `asyncEval` entirely would not overlap anything — MLX schedules nothing until
+    /// something depends on it.
+    private func encodeBatch(_ batch: PreprocessedBatch) -> MLXArray {
+        let hiddenStates = model
+            .encode(batch.inputIds, attentionMask: batch.attentionMask)
+            .lastHiddenState  // [batch, seq_len, hidden]
+        MLX.asyncEval(hiddenStates)
+        return hiddenStates
+    }
+
     private func extractFromBatch(
         batch: PreprocessedBatch,
         threshold: Float,
@@ -386,13 +685,25 @@ public class GLiNER2 {
         includeSpans: Bool
     ) -> [[String: Any]] {
         guard !batch.isEmpty else { return [] }
+        return decodeBatch(
+            batch: batch,
+            hiddenStates: encodeBatch(batch),
+            threshold: threshold,
+            metadata: metadata,
+            includeConfidence: includeConfidence,
+            includeSpans: includeSpans
+        )
+    }
 
-        // 1. Run encoder on full batch
-        let encoderOutput = model.encode(batch.inputIds, attentionMask: batch.attentionMask)
-        let hiddenStates = encoderOutput.lastHiddenState  // [batch, seq_len, hidden]
-
-        // Evaluate to ensure computation is complete
-        MLX.eval(hiddenStates)
+    private func decodeBatch(
+        batch: PreprocessedBatch,
+        hiddenStates: MLXArray,
+        threshold: Float,
+        metadata: SchemaMetadata,
+        includeConfidence: Bool,
+        includeSpans: Bool
+    ) -> [[String: Any]] {
+        guard !batch.isEmpty else { return [] }
 
         var results: [[String: Any]] = []
         let decoder = SpanDecoder(maxWidth: config.maxWidth)
@@ -406,7 +717,7 @@ public class GLiNER2 {
             let originalSchemas = batch.originalSchemas[sampleIdx]
 
             // Find text tokens position
-            let textStartIdx = findTextStartIndex(mapping: mappedIndices)
+            let textStartIdx = batch.textStartIndices[sampleIdx]
             let seqLen = mappedIndices.count
 
             // Get text token embeddings (subword level)
@@ -416,22 +727,29 @@ public class GLiNER2 {
             // This aggregates subwords belonging to the same whitespace-split word
             let pooledEmbeddings = poolTextEmbeddings(
                 subwordEmbeddings: subwordEmbeddings,
-                mappedIndices: Array(mappedIndices[textStartIdx...]),
+                wordFirstIndices: batch.wordFirstIndices[sampleIdx],
+                wordSubwordCounts: batch.wordSubwordCounts[sampleIdx],
                 poolingType: processor.tokenPooling
             )
-            let textLen = pooledEmbeddings.dim(0)  // Number of whitespace words
+            // Pooled positions cover the classification prefix AND the real text words:
+            // buildClassificationPrefix prepends its tokens to the text segment. Python
+            // separates the two — `text_len = len(start_mapping)` counts only real words,
+            // and the prefix occupies `scores[..., :-text_len]` — so the span decode path
+            // must use the real text length, not the pooled length. They are equal (and
+            // the prefix empty) for every schema without choice fields, which is why this
+            // only matters once choices are in play.
+            let pooledLen = pooledEmbeddings.dim(0)
+            let textLen = min(batch.startMappings[sampleIdx].count, pooledLen)
+            let prefixLen = pooledLen - textLen
+            let allTextTokens = batch.textTokens[sampleIdx]
+            let prefixTokens = prefixLen > 0
+                ? Array(allTextTokens.prefix(prefixLen))
+                : []
 
-            // Extract schema embeddings per-schema (grouped by schema_idx in mapping)
-            // Only special tokens ([P], [C], [E], [R], [L]) contribute embeddings
-            // Get input IDs for this sample (needed for token string lookup)
-            let sampleInputIds = batch.getInputIds(for: sampleIdx)
-
-            let schemaEmbsList = extractSchemaEmbeddingsPerSchema(
-                hiddenStates: sampleHidden,
-                mappedIndices: mappedIndices,
-                schemaTokensList: schemaTokensList,
-                inputIds: sampleInputIds
-            )
+            // Positions of the marker tokens ([P], [C], [E], [R], [L]) that contribute
+            // embeddings, grouped per schema. Recorded during tokenization (Phase 3.5), so
+            // no per-position vocabulary lookup happens here any more.
+            let markerPositions = batch.schemaMarkerPositions[sampleIdx]
 
             // Compute span info if we have any span tasks
             let hasSpanTask = taskTypes.contains { $0 != "classifications" }
@@ -457,21 +775,55 @@ public class GLiNER2 {
                 }
             }
 
+            // Build every schema's marker gather up front, and with it the count-prediction
+            // argmax for the span tasks, then force the whole set with one barrier. Each
+            // schema's countPred graph is left exactly as it was — stacking them into a
+            // single matmul would change the accumulation order and could flip a near-tie
+            // count — so this batches only the synchronization. `item()` on an already
+            // evaluated array is a copy, so the decode loop below no longer blocks per
+            // schema.
+            let schemaCount = schemaTokensList.count
+            var schemaEmbeddings = [MLXArray?](repeating: nil, count: schemaCount)
+            var countArgmax = [MLXArray?](repeating: nil, count: schemaCount)
+            var pendingCounts: [MLXArray] = []
+
+            for schemaIdx in 0..<schemaCount {
+                guard schemaTokensList[schemaIdx].count >= 4,
+                      schemaIdx < markerPositions.count,
+                      !markerPositions[schemaIdx].isEmpty,
+                      schemaIdx < taskTypes.count else { continue }
+
+                // Gather this schema's marker embeddings in one kernel, replacing a
+                // per-marker row slice plus a stack.
+                let embs = MLX.take(  // [numTokens, hidden]
+                    sampleHidden,
+                    MLXArray(markerPositions[schemaIdx].map { Int32($0) }),
+                    axis: 0
+                )
+                schemaEmbeddings[schemaIdx] = embs
+
+                if taskTypes[schemaIdx] != "classifications", spanInfo != nil {
+                    let countLogits = model.countPred(embs[0].expandedDimensions(axis: 0))
+                    let argmax = MLX.argMax(countLogits.squeezed(axis: 0))
+                    countArgmax[schemaIdx] = argmax
+                    pendingCounts.append(argmax)
+                }
+            }
+
+            if !pendingCounts.isEmpty {
+                MLX.eval(pendingCounts)
+            }
+
             // Process each schema separately (like Python does)
             var sampleResult: [String: Any] = [:]
 
             for (schemaIdx, schemaTokens) in schemaTokensList.enumerated() {
-                guard schemaTokens.count >= 4 else { continue }
-                guard schemaIdx < schemaEmbsList.count, !schemaEmbsList[schemaIdx].isEmpty else { continue }
-                guard schemaIdx < taskTypes.count else { continue }
+                guard let embs = schemaEmbeddings[schemaIdx] else { continue }
 
                 let taskType = taskTypes[schemaIdx]
 
                 // Get schema name (token at index 2, before [DESCRIPTION] if present)
                 let schemaName = schemaTokens[2].components(separatedBy: " [DESCRIPTION] ")[0]
-
-                // Stack schema embeddings for this schema
-                let embs = MLX.stacked(schemaEmbsList[schemaIdx], axis: 0)  // [numTokens, hidden]
 
                 if taskType == "classifications" {
                     // Classification task - use classifier MLP
@@ -485,13 +837,15 @@ public class GLiNER2 {
                     )
                 } else {
                     // Span-based task (entities, json_structures, relations)
-                    guard let info = spanInfo else { continue }
+                    guard let info = spanInfo,
+                          let predCountArray = countArgmax[schemaIdx] else { continue }
 
                     extractSpanResult(
                         results: &sampleResult,
                         schemaName: schemaName,
                         taskType: taskType,
                         embs: embs,
+                        predCount: Int(predCountArray.item(Int32.self)),
                         spanInfo: info,
                         schemaTokens: schemaTokens,
                         textLen: textLen,
@@ -501,6 +855,7 @@ public class GLiNER2 {
                         threshold: threshold,
                         metadata: metadata,
                         clsFields: clsFields,
+                        prefixTokens: prefixTokens,
                         decoder: decoder,
                         includeConfidence: includeConfidence,
                         includeSpans: includeSpans
@@ -514,159 +869,72 @@ public class GLiNER2 {
         return results
     }
 
-    /// Find the index where text tokens start in the mapping
-    private func findTextStartIndex(mapping: [MappedIndex]) -> Int {
-        for (idx, map) in mapping.enumerated() {
-            if map.segmentType == .text {
-                return idx
-            }
-        }
-        return mapping.count
-    }
-
-    /// Extract schema embeddings (only special tokens that contribute)
-    private func extractSchemaEmbeddings(
-        hiddenStates: MLXArray,
-        mappedIndices: [MappedIndex]
-    ) -> MLXArray {
-        var schemaEmbList: [MLXArray] = []
-
-        for (idx, mapping) in mappedIndices.enumerated() {
-            if mapping.segmentType == .schema {
-                // Only extract [P], [C], [E], [R], [L] token embeddings
-                schemaEmbList.append(hiddenStates[idx].expandedDimensions(axis: 0))
-            }
-        }
-
-        guard !schemaEmbList.isEmpty else {
-            return MLXArray.zeros([0, config.hiddenSize])
-        }
-
-        return MLX.concatenated(schemaEmbList, axis: 0)
-    }
-
-    /// Special marker tokens that contribute embeddings
-    private static let specialMarkerTokens: Set<String> = ["[P]", "[C]", "[E]", "[R]", "[L]"]
-
-    /// Extract schema embeddings grouped by schema index.
-    /// Returns a list of embedding arrays, one per schema.
-    /// Only special tokens ([P], [C], [E], [R], [L]) contribute embeddings.
-    ///
-    /// This matches Python's approach in processor.py:1018-1025:
-    /// ```python
-    /// for j, tid in enumerate(ids):
-    ///     seg_type, orig_idx, schema_idx = mappings[j]
-    ///     emb = embs[j]
-    ///     if seg_type == "schema":
-    ///         tok = self.tokenizer.convert_ids_to_tokens(tid)
-    ///         if tok in special_set:
-    ///             schema_embs[schema_idx].append(emb)
-    /// ```
-    private func extractSchemaEmbeddingsPerSchema(
-        hiddenStates: MLXArray,
-        mappedIndices: [MappedIndex],
-        schemaTokensList: [[String]],
-        inputIds: [Int]
-    ) -> [[MLXArray]] {
-        let numSchemas = schemaTokensList.count
-        var schemaEmbs: [[MLXArray]] = Array(repeating: [], count: numSchemas)
-
-        // Match Python: iterate through all positions and check actual token string
-        for (idx, mapping) in mappedIndices.enumerated() {
-            guard mapping.segmentType == .schema else { continue }
-
-            let schemaIdx = mapping.schemaIndex
-            guard schemaIdx >= 0 && schemaIdx < numSchemas else { continue }
-            guard idx < inputIds.count else { continue }
-
-            // Get actual token string (matching Python's convert_ids_to_tokens)
-            let tokenId = inputIds[idx]
-            if let tokenStr = processor.tokenizer.idToToken(tokenId),
-               Self.specialMarkerTokens.contains(tokenStr) {
-                schemaEmbs[schemaIdx].append(hiddenStates[idx])
-            }
-        }
-
-        return schemaEmbs
-    }
-
-    /// Get argmax of a 1D array
-    private func argmax(_ arr: MLXArray) -> Int {
-        MLX.eval(arr)
-        let maxIdx = MLX.argMax(arr)
-        MLX.eval(maxIdx)
-        return Int(maxIdx.item(Int32.self))
-    }
-
     /// Pool subword embeddings to word-level embeddings.
     ///
     /// This aggregates subword embeddings belonging to the same whitespace-split word.
     /// Matches Python: processor.py:_aggregate() and extract_embeddings_from_batch()
     ///
+    /// The word boundaries arrive precomputed from tokenization (Phase 3.5): each word owns
+    /// a contiguous run of subwords, so `first ..< first + count` describes it completely.
+    /// That turns what used to be one lazy row slice per subword plus a stack per word —
+    /// hundreds of kernel launches on a long document — into a single gather.
+    ///
     /// - Parameters:
     ///   - subwordEmbeddings: Subword token embeddings [num_subwords, hidden]
-    ///   - mappedIndices: Mapping info for each subword (must be text segment only)
+    ///   - wordFirstIndices: Index of each word's first subword
+    ///   - wordSubwordCounts: Number of subwords in each word
     ///   - poolingType: How to aggregate subwords ("first", "mean", or "max")
     /// - Returns: Word-level embeddings [num_words, hidden]
-    private func poolTextEmbeddings(
+    func poolTextEmbeddings(   // internal, not private: covered directly by GatherIndexTests
         subwordEmbeddings: MLXArray,
-        mappedIndices: [MappedIndex],
+        wordFirstIndices: [Int],
+        wordSubwordCounts: [Int],
         poolingType: TokenPoolingType
     ) -> MLXArray {
-        guard subwordEmbeddings.dim(0) > 0 else {
-            return subwordEmbeddings
+        guard subwordEmbeddings.dim(0) > 0, !wordFirstIndices.isEmpty else {
+            return MLXArray.zeros([0, config.hiddenSize], dtype: subwordEmbeddings.dtype)
         }
 
-        var wordEmbeddings: [MLXArray] = []
-        var bucket: [MLXArray] = []
-        var lastOrigIdx: Int? = nil
+        if poolingType == .first {
+            return MLX.take(subwordEmbeddings, MLXArray(wordFirstIndices.map { Int32($0) }), axis: 0)
+        }
 
-        for (i, mapping) in mappedIndices.enumerated() {
-            guard mapping.segmentType == .text else { continue }
+        // Gather every word's subwords into a rectangular [words, maxSubwords, hidden]
+        // block. Short words repeat their last subword: harmless for `max` (idempotent)
+        // and masked back out for `mean`.
+        let wordCount = wordFirstIndices.count
+        let maxSubwords = wordSubwordCounts.max() ?? 1
 
-            let emb = subwordEmbeddings[i]
-            let origIdx = mapping.originalIndex
-
-            // When we see a new word (different origIdx), aggregate the previous bucket
-            if let last = lastOrigIdx, origIdx != last, !bucket.isEmpty {
-                wordEmbeddings.append(aggregateEmbeddings(bucket, poolingType: poolingType))
-                bucket = []
+        var gatherIndices = [Int32](repeating: 0, count: wordCount * maxSubwords)
+        for w in 0..<wordCount {
+            let first = wordFirstIndices[w]
+            let last = wordSubwordCounts[w] - 1
+            for k in 0..<maxSubwords {
+                gatherIndices[w * maxSubwords + k] = Int32(first + min(k, last))
             }
-
-            bucket.append(emb)
-            lastOrigIdx = origIdx
         }
 
-        // Don't forget the last bucket
-        if !bucket.isEmpty {
-            wordEmbeddings.append(aggregateEmbeddings(bucket, poolingType: poolingType))
+        let gathered = MLX.take(subwordEmbeddings, MLXArray(gatherIndices), axis: 0)
+            .reshaped([wordCount, maxSubwords, config.hiddenSize])
+
+        if poolingType == .max {
+            return MLX.max(gathered, axis: 1)
         }
 
-        guard !wordEmbeddings.isEmpty else {
-            return MLXArray.zeros([0, config.hiddenSize])
+        var maskValues = [Float](repeating: 0, count: wordCount * maxSubwords)
+        for w in 0..<wordCount {
+            for k in 0..<wordSubwordCounts[w] {
+                maskValues[w * maxSubwords + k] = 1
+            }
         }
+        let mask = MLXArray(maskValues)
+            .reshaped([wordCount, maxSubwords, 1])
+            .asType(gathered.dtype)
+        let counts = MLXArray(wordSubwordCounts.map { Float($0) })
+            .reshaped([wordCount, 1])
+            .asType(gathered.dtype)
 
-        return MLX.stacked(wordEmbeddings, axis: 0)
-    }
-
-    /// Aggregate multiple embeddings using the specified pooling strategy.
-    ///
-    /// Matches Python: processor.py:_aggregate()
-    private func aggregateEmbeddings(_ embeddings: [MLXArray], poolingType: TokenPoolingType) -> MLXArray {
-        guard !embeddings.isEmpty else {
-            fatalError("Cannot aggregate empty embeddings")
-        }
-
-        switch poolingType {
-        case .first:
-            return embeddings[0]
-        case .mean:
-            let stacked = MLX.stacked(embeddings, axis: 0)
-            return MLX.mean(stacked, axis: 0)
-        case .max:
-            let stacked = MLX.stacked(embeddings, axis: 0)
-            return MLX.max(stacked, axis: 0)
-        }
+        return MLX.sum(gathered * mask, axis: 1) / counts
     }
 
     // MARK: - Classification Extraction
@@ -693,6 +961,12 @@ public class GLiNER2 {
         guard let config = clsConfig,
               let labels = config["labels"] as? [String] else { return }
 
+        // The result is keyed by `schemaName`, which the caller derives exactly as Python
+        // does — `schemaTokens[2].split(" [DESCRIPTION] ")[0]` (engine.py:535). With a
+        // prompt that key is "task: prompt", matching Python byte-for-byte; do NOT reduce it
+        // to the bare task name (verified against Python — that would diverge).
+        let resultKey = schemaName
+
         let isMultiLabel = config["multi_label"] as? Bool ?? false
         let classThreshold = config["cls_threshold"] as? Float ?? 0.5
         let activation = config["class_act"] as? String ?? "auto"
@@ -715,17 +989,27 @@ public class GLiNER2 {
             probs = isMultiLabel ? MLX.sigmoid(logits) : MLX.softmax(logits, axis: -1)
         }
 
-        MLX.eval(probs)
+        // Single bulk copy to the CPU, then read every label in pure Swift
+        // (replaces per-label `.item()` syncs and the redundant argmax evals).
+        let probsArr = probs.asArray(Float32.self)
 
         // Extract results
         let numLabels = labels.count
-        guard probs.dim(0) >= numLabels else { return }
+        guard probsArr.count >= numLabels else { return }
+
+        // argmax over the full vector, first-max on ties (matches MLX.argMax)
+        func argmaxFull() -> Int {
+            var bi = 0
+            var bv = probsArr[0]
+            for j in 1..<probsArr.count where probsArr[j] > bv { bv = probsArr[j]; bi = j }
+            return bi
+        }
 
         if isMultiLabel {
             // Multi-label: return all labels above threshold
             var chosen: [(String, Float)] = []
             for j in 0..<numLabels {
-                let prob = Float(probs[j].item(Float32.self))
+                let prob = probsArr[j]
                 if prob >= classThreshold {
                     chosen.append((labels[j], prob))
                 }
@@ -733,28 +1017,28 @@ public class GLiNER2 {
 
             // If none above threshold, return the best one
             if chosen.isEmpty {
-                let bestIdx = argmax(probs)
+                let bestIdx = argmaxFull()
                 if bestIdx < numLabels {
-                    let bestProb = Float(probs[bestIdx].item(Float32.self))
+                    let bestProb = probsArr[bestIdx]
                     chosen = [(labels[bestIdx], bestProb)]
                 }
             }
 
             if includeConfidence {
-                results[schemaName] = chosen.map { ["label": $0.0, "confidence": $0.1] }
+                results[resultKey] = chosen.map { ["label": $0.0, "confidence": $0.1] }
             } else {
-                results[schemaName] = chosen.map { $0.0 }
+                results[resultKey] = chosen.map { $0.0 }
             }
         } else {
             // Single-label: return the best label
-            let bestIdx = argmax(probs)
+            let bestIdx = argmaxFull()
             guard bestIdx < numLabels else { return }
-            let bestProb = Float(probs[bestIdx].item(Float32.self))
+            let bestProb = probsArr[bestIdx]
 
             if includeConfidence {
-                results[schemaName] = ["label": labels[bestIdx], "confidence": bestProb]
+                results[resultKey] = ["label": labels[bestIdx], "confidence": bestProb]
             } else {
-                results[schemaName] = labels[bestIdx]
+                results[resultKey] = labels[bestIdx]
             }
         }
     }
@@ -769,6 +1053,7 @@ public class GLiNER2 {
         schemaName: String,
         taskType: String,
         embs: MLXArray,
+        predCount: Int,
         spanInfo: SpanInfo,
         schemaTokens: [String],
         textLen: Int,
@@ -778,6 +1063,7 @@ public class GLiNER2 {
         threshold: Float,
         metadata: SchemaMetadata,
         clsFields: [String: [String]],
+        prefixTokens: [String],
         decoder: SpanDecoder,
         includeConfidence: Bool,
         includeSpans: Bool
@@ -801,17 +1087,20 @@ public class GLiNER2 {
             return
         }
 
-        // Predict count using [P] token (first embedding)
-        let countLogits = model.countPred(embs[0].expandedDimensions(axis: 0))
-        let predCount = argmax(countLogits.squeezed(axis: 0))
-
+        // `predCount` was computed from this schema's [P] embedding by the caller, which
+        // evaluates every schema's count argmax in one barrier (Phase 2.2).
         if predCount <= 0 {
             if taskType == "entities" {
                 results[schemaName] = [:] as [String: Any]
             } else if taskType == "relations" {
-                results[schemaName] = [] as [(String, String)]
+                // Still register the relation under `relation_extraction` with an empty
+                // list: Python lists every requested relation even when nothing matched.
+                var grouped = results["relation_extraction"] as? [String: Any] ?? [:]
+                grouped[schemaName] = [] as [Any]
+                results["relation_extraction"] = grouped
             } else {
-                results[schemaName] = [] as [[String: Any]]
+                // An empty structure formats to `{}` in Python, not `[]`.
+                results[schemaName] = [String: Any]()
             }
             return
         }
@@ -827,9 +1116,12 @@ public class GLiNER2 {
         let spanRepReshaped = spanInfo.spanRep.reshaped([L, config.maxWidth, config.hiddenSize])
 
         // Einsum: scores[b,p,l,k] = sum_d(spanRep[l,k,d] * structProj[b,p,d])
-        var spanScores = MLX.einsum("lkd,cpd->cplk", spanRepReshaped, structProj)
-        spanScores = MLX.sigmoid(spanScores)  // [count, fields, L, maxWidth]
-        MLX.eval(spanScores)
+        var scoreArray = MLX.einsum("lkd,cpd->cplk", spanRepReshaped, structProj)
+        scoreArray = MLX.sigmoid(scoreArray)  // [count, fields, L, maxWidth]
+
+        // One readback for the whole schema. `asArray` evaluates, so this also subsumes
+        // the explicit eval that used to sit here (Phase 2.1).
+        let spanScores = SpanScoreBuffer(scoreArray)
 
         // Extract based on task type
         if taskType == "entities" {
@@ -880,6 +1172,7 @@ public class GLiNER2 {
                 threshold: threshold,
                 metadata: metadata,
                 clsFields: clsFields,
+                prefixTokens: prefixTokens,
                 decoder: decoder,
                 includeConfidence: includeConfidence,
                 includeSpans: includeSpans
@@ -893,7 +1186,7 @@ public class GLiNER2 {
         results: inout [String: Any],
         schemaName: String,
         fieldNames: [String],
-        spanScores: MLXArray,
+        spanScores: SpanScoreBuffer,
         textLen: Int,
         originalText: String,
         startMappings: [Int],
@@ -905,22 +1198,20 @@ public class GLiNER2 {
         includeSpans: Bool
     ) {
         // For entities, use scores[0, :, -textLen:] (first count slot, all fields, text portion)
-        let totalLen = spanScores.dim(2)
-        let startIdx = totalLen - textLen
-        let scores = spanScores[0]  // [fields, L, maxWidth]
+        let startIdx = spanScores.rows - textLen
 
         var entityResults: [String: [Any]] = [:]
 
         for (fieldIdx, entityName) in fieldNames.enumerated() {
-            guard fieldIdx < scores.dim(0) else { continue }
-
-            // Get scores for this field's text spans
-            let fieldScores = scores[fieldIdx, startIdx...]  // [textLen, maxWidth]
+            guard fieldIdx < spanScores.fields else { continue }
 
             let fieldThreshold = metadata.entityMetadata[entityName]?.threshold ?? threshold
 
             let spans = decoder.findSpans(
-                scores: fieldScores,
+                scores: spanScores,
+                instance: 0,
+                field: fieldIdx,
+                rowOffset: startIdx,
                 threshold: fieldThreshold,
                 textLen: textLen,
                 text: originalText,
@@ -934,10 +1225,45 @@ public class GLiNER2 {
                 includeSpans: includeSpans
             )
 
-            entityResults[entityName] = formatted
+            // Python's formatting pass keeps only the first span per distinct lowercased
+            // surface text, even when spans are included (engine.py:_format_entity_dict).
+            // A document repeating "Apple" ten times yields one entry, not ten.
+            entityResults[entityName] = Self.dedupeByLowercasedText(formatted)
         }
 
         results[schemaName] = entityResults
+    }
+
+    /// Drop later values whose `text` (lowercased) was already seen, preserving order.
+    ///
+    /// Mirrors Python's `_format_entity_dict` / `_format_struct` de-duplication, which
+    /// applies to both plain-string and span-dictionary output shapes.
+    static func dedupeByLowercasedText(_ values: [Any]) -> [Any] {
+        var unique: [Any] = []
+        var seen: Set<String> = []
+        unique.reserveCapacity(values.count)
+
+        for value in values {
+            let text: String?
+            if let string = value as? String {
+                text = string
+            } else if let dict = value as? [String: Any] {
+                text = dict["text"] as? String
+            } else {
+                text = nil
+            }
+
+            guard let key = text else {
+                unique.append(value)   // shape we do not de-duplicate on
+                continue
+            }
+            guard !key.isEmpty else { continue }   // Python drops falsy text
+            let lowered = key.lowercased()
+            if seen.insert(lowered).inserted {
+                unique.append(value)
+            }
+        }
+        return unique
     }
 
     // MARK: - Relation Extraction
@@ -946,7 +1272,7 @@ public class GLiNER2 {
         results: inout [String: Any],
         schemaName: String,
         fieldNames: [String],
-        spanScores: MLXArray,
+        spanScores: SpanScoreBuffer,
         predCount: Int,
         textLen: Int,
         originalText: String,
@@ -958,27 +1284,25 @@ public class GLiNER2 {
         includeConfidence: Bool,
         includeSpans: Bool
     ) {
-        let totalLen = spanScores.dim(2)
-        let startIdx = totalLen - textLen
+        let startIdx = spanScores.rows - textLen
 
         var instances: [Any] = []
 
         // Process each count instance
         for inst in 0..<predCount {
-            let instScores = spanScores[inst]  // [fields, L, maxWidth]
-
             var fieldData: [(String?, Float, Int, Int)?] = []
 
             for (fieldIdx, _) in fieldNames.enumerated() {
-                guard fieldIdx < instScores.dim(0) else {
+                guard fieldIdx < spanScores.fields else {
                     fieldData.append(nil)
                     continue
                 }
 
-                let fieldScores = instScores[fieldIdx, startIdx...]  // [textLen, maxWidth]
-
                 let spans = decoder.findSpans(
-                    scores: fieldScores,
+                    scores: spanScores,
+                    instance: inst,
+                    field: fieldIdx,
+                    rowOffset: startIdx,
                     threshold: threshold,
                     textLen: textLen,
                     text: originalText,
@@ -1021,7 +1345,11 @@ public class GLiNER2 {
             }
         }
 
-        results[schemaName] = instances
+        // Python groups every relation under a top-level `relation_extraction` key, and
+        // lists each requested relation even when it matched nothing (engine.py:1066-1075).
+        var grouped = results["relation_extraction"] as? [String: Any] ?? [:]
+        grouped[schemaName] = instances
+        results["relation_extraction"] = grouped
     }
 
     // MARK: - Structure Extraction
@@ -1030,7 +1358,7 @@ public class GLiNER2 {
         results: inout [String: Any],
         schemaName: String,
         fieldNames: [String],
-        spanScores: MLXArray,
+        spanScores: SpanScoreBuffer,
         predCount: Int,
         textLen: Int,
         originalText: String,
@@ -1039,22 +1367,20 @@ public class GLiNER2 {
         threshold: Float,
         metadata: SchemaMetadata,
         clsFields: [String: [String]],
+        prefixTokens: [String],
         decoder: SpanDecoder,
         includeConfidence: Bool,
         includeSpans: Bool
     ) {
-        let totalLen = spanScores.dim(2)
-        let startIdx = totalLen - textLen
+        let startIdx = spanScores.rows - textLen
 
         var instances: [[String: Any]] = []
 
         for inst in 0..<predCount {
-            let instScores = spanScores[inst]  // [fields, L, maxWidth]
-
             var instance: [String: Any] = [:]
 
             for (fieldIdx, fieldName) in fieldNames.enumerated() {
-                guard fieldIdx < instScores.dim(0) else { continue }
+                guard fieldIdx < spanScores.fields else { continue }
 
                 let fieldKey = "\(schemaName).\(fieldName)"
                 let fieldMeta = metadata.fieldMetadata[fieldKey]
@@ -1063,30 +1389,47 @@ public class GLiNER2 {
 
                 // Check if this is a choice field
                 if let choices = clsFields[fieldKey] {
-                    // Choice field: use prefix scores
-                    let prefixScores = instScores[fieldIdx, 0..<startIdx]  // [prefixLen, maxWidth]
-
+                    // Choice fields are scored against the classification-prefix region,
+                    // which occupies the positions before the real text words. Matches
+                    // Python: prefix_scores = span_scores[inst, fidx, :-text_len] and
+                    // _find_choice_idx(choice, text_tokens[:-text_len]).
                     let result = decoder.decodeChoiceField(
-                        prefixScores: prefixScores,
+                        scores: spanScores,
+                        instance: inst,
+                        field: fieldIdx,
+                        prefixLength: startIdx,
                         choices: choices,
-                        textTokens: [],  // Not used with this implementation
+                        textTokens: prefixTokens,
                         threshold: fieldThreshold,
-                        dtype: dtype
+                        dtype: dtype,
+                        includeConfidence: includeConfidence
                     )
 
-                    instance[fieldName] = result
+                    // Python keeps the key with a null/empty value rather than dropping
+                    // it (engine.py:660); the instance-level content gate below decides
+                    // whether the whole instance survives.
+                    instance[fieldName] = result ?? NSNull()
                 } else {
                     // Regular span field: use text scores
-                    let fieldScores = instScores[fieldIdx, startIdx...]  // [textLen, maxWidth]
-
-                    let spans = decoder.findSpans(
-                        scores: fieldScores,
+                    var spans = decoder.findSpans(
+                        scores: spanScores,
+                        instance: inst,
+                        field: fieldIdx,
+                        rowOffset: startIdx,
                         threshold: fieldThreshold,
                         textLen: textLen,
                         text: originalText,
                         startMap: startMappings,
                         endMap: endMappings
                     )
+
+                    // Drop spans failing any validator before formatting, as Python does
+                    // (engine.py:668).
+                    if let validators = fieldMeta?.validators, !validators.isEmpty {
+                        spans = spans.filter { span in
+                            validators.allSatisfy { $0.validate(span.text) }
+                        }
+                    }
 
                     if dtype == "list" {
                         instance[fieldName] = decoder.formatSpans(
@@ -1122,19 +1465,31 @@ public class GLiNER2 {
                 }
             }
 
-            // Only add if instance has any content
+            // Only add if instance has any content. Matches Python's
+            // `any(v is not None and v != [])` (engine.py:697) — a null choice value and
+            // an empty span list both count as "no content".
             let hasContent = instance.values.contains { value in
+                if value is NSNull { return false }
                 if let arr = value as? [Any], arr.isEmpty { return false }
                 if let str = value as? String, str.isEmpty { return false }
                 return true
             }
 
             if hasContent {
+                // De-duplicate repeated surface text within each list-valued field, as
+                // Python's _format_struct does.
+                for (fieldName, value) in instance {
+                    if let list = value as? [Any] {
+                        instance[fieldName] = Self.dedupeByLowercasedText(list)
+                    }
+                }
                 instances.append(instance)
             }
         }
 
-        results[schemaName] = instances
+        // With no surviving instance Python leaves an empty struct dict, which formats to
+        // `{}` — not the empty list Swift would otherwise emit.
+        results[schemaName] = instances.isEmpty ? [String: Any]() : instances
     }
 }
 
@@ -1159,14 +1514,20 @@ public class Schema {
 
     /// Add entity extraction task
     @discardableResult
-    public func entities(_ entityTypes: [String]) -> Schema {
+    public func entities(
+        _ entityTypes: [String],
+        dtype: String = "list",
+        threshold: Float? = nil
+    ) -> Schema {
         var entitiesDict = internalSchemaDict["entities"] as? [String: Any] ?? [:]
         for entityType in entityTypes {
             entitiesDict[entityType] = ""
+            metadata.entityMetadata[entityType] = EntityMetadata(dtype: dtype, threshold: threshold)
         }
         internalSchemaDict["entities"] = entitiesDict
         // Store entity order for parity with Python
         internalSchemaDict["_entity_order"] = entityTypes
+        metadata.entityOrder = entityTypes
         return self
     }
 
@@ -1197,34 +1558,51 @@ public class Schema {
         return self
     }
 
-    /// Add classification task
+    /// Add classification task.
+    ///
+    /// - Parameters:
+    ///   - prompt: Optional task prompt, serialized as `task: prompt` (Python `prompt`).
+    ///   - labelDescriptions: Optional per-label descriptions, serialized in label order as
+    ///     `[DESCRIPTION] label: desc` (Python `label_descriptions`).
+    ///   - examples: Optional few-shot `(input, output-label)` pairs, serialized as
+    ///     `[EXAMPLE] input [OUTPUT] output` for examples whose output is a label.
     @discardableResult
     public func classification(
         task: String,
         labels: [String],
         multiLabel: Bool = false,
-        threshold: Float = 0.5
+        threshold: Float = 0.5,
+        prompt: String? = nil,
+        labelDescriptions: [String: String]? = nil,
+        examples: [(input: String, output: String)]? = nil
     ) -> Schema {
-        var classifications = internalSchemaDict["classifications"] as? [[String: Any]] ?? []
-        classifications.append([
+        var config: [String: Any] = [
             "task": task,
             "labels": labels,
             "multi_label": multiLabel,
             "cls_threshold": threshold,
             "true_label": ["N/A"]
-        ])
+        ]
+        if let prompt = prompt { config["prompt"] = prompt }
+        if let labelDescriptions = labelDescriptions { config["label_descriptions"] = labelDescriptions }
+        if let examples = examples { config["examples"] = examples.map { [$0.input, $0.output] } }
+
+        var classifications = internalSchemaDict["classifications"] as? [[String: Any]] ?? []
+        classifications.append(config)
         internalSchemaDict["classifications"] = classifications
         return self
     }
 
     /// Add relation extraction task
     @discardableResult
-    public func relations(_ relationTypes: [String]) -> Schema {
+    public func relations(_ relationTypes: [String], threshold: Float? = nil) -> Schema {
         var relations = internalSchemaDict["relations"] as? [[String: [String: Any]]] ?? []
         for relationType in relationTypes {
             relations.append([relationType: ["head": "", "tail": ""]])
+            metadata.relationMetadata[relationType] = RelationMetadata(threshold: threshold)
         }
         internalSchemaDict["relations"] = relations
+        metadata.relationOrder.append(contentsOf: relationTypes)
         return self
     }
 
@@ -1237,6 +1615,44 @@ public class Schema {
     /// Build the schema dictionary
     public func build() -> [String: Any] {
         internalSchemaDict
+    }
+
+    // MARK: - Ingestion (Phase 6.3)
+
+    /// The schema as a plain dictionary (the shape `build()` / `fromDict` round-trip on).
+    public func toDict() -> [String: Any] { internalSchemaDict }
+
+    /// The schema as JSON data.
+    public func toJSON() throws -> Data {
+        try JSONSerialization.data(withJSONObject: internalSchemaDict)
+    }
+
+    /// Build a Schema from a raw schema dictionary (the shape `build()` produces).
+    ///
+    /// Per-field/entity metadata (thresholds, dtypes) is not recoverable from a raw dict,
+    /// so it is left empty — matching Python's raw-dict path, where only the call-level
+    /// threshold and default dtype apply. Missing top-level keys are filled with the empty
+    /// defaults so downstream code can index them unconditionally.
+    public static func fromDict(_ dict: [String: Any]) -> Schema {
+        let schema = Schema()
+        var normalized = dict
+        for (key, empty) in Schema().internalSchemaDict where normalized[key] == nil {
+            normalized[key] = empty
+        }
+        schema.internalSchemaDict = normalized
+        return schema
+    }
+
+    /// Build a Schema from JSON data / string.
+    public static func fromJSON(_ data: Data) throws -> Schema {
+        guard let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GLiNER2Error.invalidConfig("schema JSON must be a top-level object")
+        }
+        return fromDict(dict)
+    }
+
+    public static func fromJSON(_ string: String) throws -> Schema {
+        try fromJSON(Data(string.utf8))
     }
 }
 
@@ -1261,19 +1677,31 @@ public class StructureBuilder {
     ///   - choices: Optional list of choices for classification fields
     ///   - description: Optional description for the field (used in schema tokens)
     ///   - threshold: Optional confidence threshold for this field
+    ///   - validators: Optional regex validators; spans failing any of them are dropped
     @discardableResult
     public func field(
         _ fieldName: String,
         dtype: String = "list",
         choices: [String]? = nil,
         description: String? = nil,
-        threshold: Float? = nil
+        threshold: Float? = nil,
+        validators: [RegexValidator]? = nil
     ) -> StructureBuilder {
         if let choices = choices {
             fields[fieldName] = ["value": "", "choices": choices]
         } else {
             fields[fieldName] = ""
         }
+
+        // Record the per-field configuration so decoding can honour it. Matches Python's
+        // Schema._store_field_metadata; without this the decoder falls back to
+        // dtype "list" and the call-level threshold for every field.
+        schema.metadata.fieldMetadata["\(name).\(fieldName)"] = FieldMetadata(
+            dtype: dtype,
+            threshold: threshold,
+            choices: choices,
+            validators: validators
+        )
 
         // Track insertion order (only add if new)
         if !fieldOrder.contains(fieldName) {
@@ -1291,19 +1719,32 @@ public class StructureBuilder {
     /// Finish building and return to schema
     @discardableResult
     public func done() -> Schema {
+        // Structure-parent grouping (Python processor.py:639-651): a second
+        // `.structure(name)` with the same name merges into the first, taking the union
+        // of fields (first-seen order) rather than creating a duplicate schema block.
         var structures = schema.internalSchemaDict["json_structures"] as? [[String: Any]] ?? []
-        structures.append([name: fields])
+        if let existing = structures.firstIndex(where: { $0[name] != nil }) {
+            var mergedFields = structures[existing][name] as? [String: Any] ?? [:]
+            for (key, value) in fields where mergedFields[key] == nil { mergedFields[key] = value }
+            structures[existing][name] = mergedFields
+        } else {
+            structures.append([name: fields])
+        }
         schema.internalSchemaDict["json_structures"] = structures
 
-        // Store field order for this structure (critical for parity with Python)
+        // Field order: append this call's fields not already recorded for the parent.
         var fieldOrders = schema.internalSchemaDict["_field_orders"] as? [String: [String]] ?? [:]
-        fieldOrders[name] = fieldOrder
+        var order = fieldOrders[name] ?? []
+        for field in fieldOrder where !order.contains(field) { order.append(field) }
+        fieldOrders[name] = order
         schema.internalSchemaDict["_field_orders"] = fieldOrders
 
-        // Store descriptions if any were provided
+        // Descriptions: merge into any already recorded for the parent.
         if !descriptions.isEmpty {
             var jsonDescriptions = schema.internalSchemaDict["json_descriptions"] as? [String: [String: String]] ?? [:]
-            jsonDescriptions[name] = descriptions
+            var merged = jsonDescriptions[name] ?? [:]
+            for (key, value) in descriptions { merged[key] = value }
+            jsonDescriptions[name] = merged
             schema.internalSchemaDict["json_descriptions"] = jsonDescriptions
         }
 
@@ -1339,6 +1780,7 @@ public struct FieldMetadata {
     var dtype: String = "list"
     var threshold: Float?
     var choices: [String]?
+    var validators: [RegexValidator]?
 }
 
 public struct EntityMetadata {

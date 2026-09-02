@@ -36,20 +36,19 @@ import MLXNN
 /// If MLX Metal is not available, tests will be skipped.
 final class RealWeightsTests: XCTestCase {
 
-    // Path to weights directory
-    static let weightsPath: String = {
-        if let envPath = ProcessInfo.processInfo.environment["GLINER2_WEIGHTS_PATH"] {
-            return envPath
-        }
-        return URL(fileURLWithPath: #file)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("weights").path
-    }()
+    // Path to weights directory (`GLINER2_WEIGHTS_PATH`, else `<repo>/weights`)
+    static let weightsPath: String = TestModel.fp32WeightsPath
     static let fixturesPath: String = URL(fileURLWithPath: #file)
         .deletingLastPathComponent()
         .appendingPathComponent("Fixtures/inference").path
+
+    /// Every test in this class needs the converted weights on disk. Skip — never fail —
+    /// when they are absent, and in particular never let `fromPretrained` fall through to
+    /// interpreting a nonexistent path as a HuggingFace repo id and hitting the network.
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        _ = try TestModel.requireFP32Weights()
+    }
 
     /// Skip test if MLX Metal is not available (e.g., in CLI environment)
     /// In Xcode with GPU access, this will NOT skip.
@@ -1278,9 +1277,13 @@ final class RealWeightsTests: XCTestCase {
 
         let model = try await GLiNER2.fromPretrained(Self.weightsPath)
 
+        // Use the default dtype ("list"), matching how the Python fixture was generated:
+        // generate_parity_test_results.py calls extract_json with plain field-name lists.
+        // These tests previously passed dtype: "str" and only agreed with the fixture
+        // because StructureBuilder.field discarded dtype entirely (fixed in Phase 1.4).
         var schemaBuilder = model.createSchema().structure(structureName)
         for field in fields {
-            schemaBuilder = schemaBuilder.field(field, dtype: "str")
+            schemaBuilder = schemaBuilder.field(field)
         }
         let schema = schemaBuilder.done()
 
@@ -1500,18 +1503,33 @@ final class RealWeightsTests: XCTestCase {
         .deletingLastPathComponent()
         .appendingPathComponent("Fixtures/parity").path
 
+    /// Loads a Python-generated parity fixture, skipping the test when it is absent.
+    ///
+    /// These fixtures are not committed; regenerate with
+    /// `python scripts/generate_parity_test_results.py`.
+    private func loadParityFixture(_ name: String, suffix: String) throws -> [String: Any] {
+        let url = URL(fileURLWithPath: "\(Self.parityFixturesPath)/\(name)_\(suffix).json")
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw XCTSkip("""
+                Parity fixture '\(name)_\(suffix).json' not found in Fixtures/parity. \
+                Regenerate with: python scripts/generate_parity_test_results.py
+                """)
+        }
+        let data = try Data(contentsOf: url)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw XCTSkip("Parity fixture '\(name)_\(suffix).json' is not a JSON object")
+        }
+        return object
+    }
+
     /// Load Python result fixture
     private func loadParityResult(_ name: String) throws -> [String: Any] {
-        let url = URL(fileURLWithPath: "\(Self.parityFixturesPath)/\(name)_result.json")
-        let data = try Data(contentsOf: url)
-        return try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        try loadParityFixture(name, suffix: "result")
     }
 
     /// Load Python metadata fixture
     private func loadParityMetadata(_ name: String) throws -> [String: Any] {
-        let url = URL(fileURLWithPath: "\(Self.parityFixturesPath)/\(name)_metadata.json")
-        let data = try Data(contentsOf: url)
-        return try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        try loadParityFixture(name, suffix: "metadata")
     }
 
     /// Extract entity texts from result for comparison
@@ -1917,9 +1935,13 @@ final class RealWeightsTests: XCTestCase {
 
         let model = try await GLiNER2.fromPretrained(Self.weightsPath)
 
+        // Use the default dtype ("list"), matching how the Python fixture was generated:
+        // generate_parity_test_results.py calls extract_json with plain field-name lists.
+        // These tests previously passed dtype: "str" and only agreed with the fixture
+        // because StructureBuilder.field discarded dtype entirely (fixed in Phase 1.4).
         var schemaBuilder = model.createSchema().structure(structureName)
         for field in fields {
-            schemaBuilder = schemaBuilder.field(field, dtype: "str")
+            schemaBuilder = schemaBuilder.field(field)
         }
         let schema = schemaBuilder.done()
 
@@ -1965,9 +1987,13 @@ final class RealWeightsTests: XCTestCase {
 
         let model = try await GLiNER2.fromPretrained(Self.weightsPath)
 
+        // Use the default dtype ("list"), matching how the Python fixture was generated:
+        // generate_parity_test_results.py calls extract_json with plain field-name lists.
+        // These tests previously passed dtype: "str" and only agreed with the fixture
+        // because StructureBuilder.field discarded dtype entirely (fixed in Phase 1.4).
         var schemaBuilder = model.createSchema().structure(structureName)
         for field in fields {
-            schemaBuilder = schemaBuilder.field(field, dtype: "str")
+            schemaBuilder = schemaBuilder.field(field)
         }
         let schema = schemaBuilder.done()
 
@@ -2008,9 +2034,13 @@ final class RealWeightsTests: XCTestCase {
 
         let model = try await GLiNER2.fromPretrained(Self.weightsPath)
 
+        // Use the default dtype ("list"), matching how the Python fixture was generated:
+        // generate_parity_test_results.py calls extract_json with plain field-name lists.
+        // These tests previously passed dtype: "str" and only agreed with the fixture
+        // because StructureBuilder.field discarded dtype entirely (fixed in Phase 1.4).
         var schemaBuilder = model.createSchema().structure(structureName)
         for field in fields {
-            schemaBuilder = schemaBuilder.field(field, dtype: "str")
+            schemaBuilder = schemaBuilder.field(field)
         }
         let schema = schemaBuilder.done()
 
@@ -2057,9 +2087,13 @@ final class RealWeightsTests: XCTestCase {
         print("   Fields: \(fields)")
 
         // Build schema
+        // Use the default dtype ("list"), matching how the Python fixture was generated:
+        // generate_parity_test_results.py calls extract_json with plain field-name lists.
+        // These tests previously passed dtype: "str" and only agreed with the fixture
+        // because StructureBuilder.field discarded dtype entirely (fixed in Phase 1.4).
         var schemaBuilder = model.createSchema().structure(structureName)
         for field in fields {
-            schemaBuilder = schemaBuilder.field(field, dtype: "str")
+            schemaBuilder = schemaBuilder.field(field)
         }
         let schema = schemaBuilder.done()
         let schemaDict = schema.build()

@@ -1,0 +1,35 @@
+{
+  "text": "Apple released a new iPhone with improved AI capabilities.",
+  "text_normalized": "Apple released a new iPhone with improved AI capabilities.",
+  "task": "topics",
+  "labels": [
+    "technology",
+    "business",
+    "sports",
+    "entertainment"
+  ],
+  "multi_label": true,
+  "schema": {
+    "json_structures": [],
+    "classifications": [
+      {
+        "task": "topics",
+        "labels": [
+          "technology",
+          "business",
+          "sports",
+          "entertainment"
+        ],
+        "multi_label": true,
+        "cls_threshold": 0.5,
+        "true_label": [
+          "N/A"
+        ]
+      }
+    ],
+    "entities": {},
+    "relations": [],
+    "json_descriptions": {},
+    "entity_descriptions": {}
+  }
+}

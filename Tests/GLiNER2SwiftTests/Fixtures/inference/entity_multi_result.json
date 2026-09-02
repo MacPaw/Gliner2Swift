@@ -1,0 +1,34 @@
+{
+  "entities": {
+    "person": [
+      {
+        "text": "John",
+        "confidence": 1.0,
+        "start": 0,
+        "end": 4
+      },
+      {
+        "text": "Jane",
+        "confidence": 1.0,
+        "start": 9,
+        "end": 13
+      }
+    ],
+    "organization": [
+      {
+        "text": "Google",
+        "confidence": 1.0,
+        "start": 22,
+        "end": 28
+      }
+    ],
+    "location": [
+      {
+        "text": "Mountain View",
+        "confidence": 1.0,
+        "start": 32,
+        "end": 45
+      }
+    ]
+  }
+}

@@ -47,11 +47,18 @@ public struct WhitespaceTokenSplitter: Sendable {
     /// 4. Words: word-word_word
     /// 5. Single characters: any non-whitespace
     private static let pattern: NSRegularExpression = {
+        // `\w` is spelled out rather than used directly. ICU defines it to include
+        // `\p{M}` (combining marks), Python's `re` does not — it is alphanumerics per
+        // `str.isalnum()` plus underscore. On decomposed text that one difference splits
+        // words differently: "montre" + U+0301 + "al" is one word to ICU and three to
+        // Python, which shifts every character offset after the first accent. The class
+        // below is Python's definition; for ASCII it is identical to `\w`.
+        let word = "[\\p{L}\\p{Nl}\\p{No}\\p{Nd}_]"
         let patternString = """
         (?:https?://[^\\s]+|www\\.[^\\s]+)\
         |[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}\
         |@[a-z0-9_]+\
-        |\\w+(?:[-_]\\w+)*\
+        |\(word)+(?:[-_]\(word)+)*\
         |\\S
         """
         return try! NSRegularExpression(
@@ -74,21 +81,32 @@ public struct WhitespaceTokenSplitter: Sendable {
         let range = NSRange(processedText.startIndex..., in: processedText)
         let matches = Self.pattern.matches(in: processedText, options: [], range: range)
 
-        return matches.compactMap { match in
-            guard let swiftRange = Range(match.range, in: processedText) else {
-                return nil
-            }
-            let tokenText = String(processedText[swiftRange])
-            let startIndex = processedText.distance(
-                from: processedText.startIndex,
-                to: swiftRange.lowerBound
-            )
-            let endIndex = processedText.distance(
-                from: processedText.startIndex,
-                to: swiftRange.upperBound
-            )
-            return Token(text: tokenText, start: startIndex, end: endIndex)
+        // Offsets are counted in UNICODE SCALARS, not Swift Characters. Python reports
+        // character offsets in codepoints, so a grapheme-cluster count diverges on any
+        // multi-scalar cluster -- decomposed accents ("e" + U+0301) being the common case,
+        // where Swift sees 1 Character and Python sees 2 characters.
+        //
+        // Matches arrive in document order, so a running cursor gives the whole pass
+        // linear cost; `distance(from: startIndex,...)` per match would be quadratic in
+        // the text length.
+        let scalars = processedText.unicodeScalars
+        var cursorIndex = scalars.startIndex
+        var cursorOffset = 0
+
+        var tokens: [Token] = []
+        tokens.reserveCapacity(matches.count)
+
+        for match in matches {
+            guard let swiftRange = Range(match.range, in: processedText) else { continue }
+
+            let start = cursorOffset + scalars.distance(from: cursorIndex, to: swiftRange.lowerBound)
+            let end = start + scalars.distance(from: swiftRange.lowerBound, to: swiftRange.upperBound)
+            cursorIndex = swiftRange.upperBound
+            cursorOffset = end
+
+            tokens.append(Token(text: String(processedText[swiftRange]), start: start, end: end))
         }
+        return tokens
     }
 
     /// Tokenize and return only token strings

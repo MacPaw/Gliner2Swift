@@ -1,0 +1,11 @@
+{
+  "text": "The Lakers won the championship last night.",
+  "task": "topic",
+  "labels": [
+    "sports",
+    "technology",
+    "politics"
+  ],
+  "purpose": "Sports topic",
+  "threshold": 0.5
+}

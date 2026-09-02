@@ -29,18 +29,8 @@ final class TokenizerParityTests: XCTestCase {
 
     // MARK: - Properties
 
-    /// Path to weights directory (set via environment or hardcoded for local testing)
-    static let weightsPath: String = {
-        if let envPath = ProcessInfo.processInfo.environment["GLINER2_WEIGHTS_PATH"] {
-            return envPath
-        }
-        // Default: weights directory at project root
-        return URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .deletingLastPathComponent()
-            .appendingPathComponent("weights").path
-    }()
+    /// Path to weights directory (set via `GLINER2_WEIGHTS_PATH`, else `<repo>/weights`)
+    static let weightsPath: String = TestModel.fp32WeightsPath
 
     /// Path to fixtures directory
     static let fixturesPath = URL(fileURLWithPath: #file)
@@ -55,9 +45,15 @@ final class TokenizerParityTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
 
+        // Skip (never fail) when the model is not available on this machine.
+        let weightsDir = try TestModel.requireFP32Weights()
+
         // Load tokenizer
-        let tokenizerUrl = URL(fileURLWithPath: Self.weightsPath)
+        let tokenizerUrl = URL(fileURLWithPath: weightsDir)
             .appendingPathComponent("tokenizer.json")
+        guard FileManager.default.fileExists(atPath: tokenizerUrl.path) else {
+            throw XCTSkip("tokenizer.json not found at \(tokenizerUrl.path)")
+        }
         tokenizer = try UnigramTokenizer(tokenizerJsonUrl: tokenizerUrl)
 
         // Load fixtures
@@ -212,6 +208,36 @@ final class TokenizerParityTests: XCTestCase {
         // Should not contain UNK tokens
         XCTAssertFalse(ids.contains(tokenizer.unkTokenId),
             "Accented characters should not produce UNK tokens")
+    }
+
+    // MARK: - Unknown-character handling
+    //
+    // The reference tokenizer declares `unk_id: 3` and `byte_fallback: false`, so any
+    // character no vocabulary piece covers becomes ONE [UNK] — not a run of `<0xNN>` byte
+    // pieces, which is what this implementation used to emit and which inflated the token
+    // count fivefold. Expected ids below were taken from
+    // `AutoTokenizer.from_pretrained("fastino/gliner2-base-v1")` on 2026-07-21.
+
+    func testFullwidthLettersBecomeSingleUnknowns() throws {
+        let ids = tokenizer.encode("ＡＢＣ Corp hired Ｊｏｈｎ Ｓｍｉｔｈ in Ｔｏｋｙｏ.")
+        XCTAssertEqual(ids, [507, 3, 6071, 5458, 507, 3, 507, 3, 267, 507, 3, 260],
+                       "Each fullwidth run must collapse to a single [UNK]")
+    }
+
+    func testZeroWidthAndNonBreakingSpacesSurviveAsUnknowns() throws {
+        // The NBSP must NOT be treated as a word separator (Metaspace splits on the ASCII
+        // space alone), and the zero-width space must not be trimmed away — Foundation's
+        // CharacterSet.whitespaces contains U+200B even though Character.isWhitespace
+        // does not.
+        let ids = tokenizer.encode("Tim\u{00A0}Cook joined Apple\u{200B}Inc in Cupertino.")
+        XCTAssertEqual(ids, [4185, 3, 48294, 2280, 2013, 3, 55668, 267, 58326, 260])
+    }
+
+    func testDecomposedAccentsComposeBeforeTokenizing() throws {
+        // NFD input; the normalizer composes it, so the ids match the NFC spelling.
+        let decomposed = "Zoe\u{301} Dupont works at Cafe\u{301} Rene\u{301} in Montre\u{301}al."
+        XCTAssertEqual(tokenizer.encode(decomposed), tokenizer.encode("Zoé Dupont works at Café René in Montréal."))
+        XCTAssertFalse(tokenizer.encode(decomposed).contains(tokenizer.unkTokenId))
     }
 
     func testJapanese() throws {

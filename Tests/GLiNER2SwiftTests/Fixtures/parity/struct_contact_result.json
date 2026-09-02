@@ -1,0 +1,22 @@
+{
+  "contact": [
+    {
+      "email": [
+        {
+          "text": "john@email.com",
+          "confidence": 1.0,
+          "start": 8,
+          "end": 22
+        }
+      ],
+      "phone": [
+        {
+          "text": "555-1234",
+          "confidence": 1.0,
+          "start": 31,
+          "end": 39
+        }
+      ]
+    }
+  ]
+}

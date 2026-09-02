@@ -171,9 +171,14 @@ public class CustomMultiHeadAttention: Module {
         k = k.reshaped([B, L, numHeads, headDim]).transposed(0, 2, 1, 3)
         v = v.reshaped([B, L, numHeads, headDim]).transposed(0, 2, 1, 3)
 
-        // Attention
-        let scale = MLXArray(Foundation.sqrt(Float(headDim)))
-        let scores = MLX.matmul(q, k.transposed(0, 1, 3, 2)) / scale
+        // Attention.
+        //
+        // The divisor is a Swift scalar, NOT an `MLXArray`. A strongly typed float32 array
+        // here promotes the whole product to float32 — and since this attention feeds
+        // countEmbed, that promotion used to spread downstream all the way through the
+        // span-score einsum and sigmoid, so an fp16 checkpoint still computed its scores in
+        // fp32. Swift scalars adopt the array's dtype instead.
+        let scores = MLX.matmul(q, k.transposed(0, 1, 3, 2)) / Foundation.sqrt(Float(headDim))
         let attnWeights = MLX.softmax(scores, axis: -1)
 
         // Apply attention

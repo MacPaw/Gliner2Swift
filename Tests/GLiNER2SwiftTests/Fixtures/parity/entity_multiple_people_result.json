@@ -1,0 +1,24 @@
+{
+  "entities": {
+    "person": [
+      {
+        "text": "John",
+        "confidence": 1.0,
+        "start": 0,
+        "end": 4
+      },
+      {
+        "text": "Mary",
+        "confidence": 1.0,
+        "start": 6,
+        "end": 10
+      },
+      {
+        "text": "Bob",
+        "confidence": 1.0,
+        "start": 16,
+        "end": 19
+      }
+    ]
+  }
+}

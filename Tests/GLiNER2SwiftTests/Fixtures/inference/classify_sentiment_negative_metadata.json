@@ -1,0 +1,33 @@
+{
+  "text": "Terrible service. Very disappointed.",
+  "text_normalized": "Terrible service. Very disappointed.",
+  "task": "sentiment",
+  "labels": [
+    "positive",
+    "negative",
+    "neutral"
+  ],
+  "multi_label": false,
+  "schema": {
+    "json_structures": [],
+    "classifications": [
+      {
+        "task": "sentiment",
+        "labels": [
+          "positive",
+          "negative",
+          "neutral"
+        ],
+        "multi_label": false,
+        "cls_threshold": 0.5,
+        "true_label": [
+          "N/A"
+        ]
+      }
+    ],
+    "entities": {},
+    "relations": [],
+    "json_descriptions": {},
+    "entity_descriptions": {}
+  }
+}
