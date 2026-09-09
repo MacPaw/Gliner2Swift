@@ -31,13 +31,44 @@ SCHEMA SPEC
 
 Usage
 -----
+    # v1 span checkpoint (default, unchanged)
     /path/to/GLiNER2/.venv/bin/python scripts/generate_prediction_corpus.py
+
+    # GLiNER 2.5 boundary checkpoint (needs the gliner2 2.0.0 venv, scripts/requirements-gliner25.txt)
+    /Users/tmwstw/Documents/mnemos/gliner2-ref/.venv/bin/python \
+        scripts/generate_prediction_corpus.py --architecture boundary \
+        --model fastino/gliner2.5-small-v1
 
 Output
 ------
-    ../Tests/GLiNER2SwiftTests/Fixtures/prediction_corpus/corpus.json
+    ../Tests/GLiNER2SwiftTests/Fixtures/prediction_corpus/corpus.json                 (span)
+    ../Tests/GLiNER2SwiftTests/Fixtures/prediction_corpus_boundary/<small|base|multi>/corpus.json
+
+Boundary mode (``--architecture boundary``)
+-------------------------------------------
+The SAME 58 texts/schemas (plus the derived borderline cases) are run through
+``AutoExtractor.from_pretrained`` in the identical JSON format (``expected`` /
+``margins`` / ``tags``), so ``PredictionParityTests`` can consume either corpus. What the
+boundary runtime does differently, for the reader of the expected values:
+
+* Structures are declared with ``schema.structure(name)`` and NO ``mode`` -> no
+  ``record_metadata`` in the schema dict -> the runtime takes the LEGACY structure path
+  (``_decode_legacy_structures``): exactly one instance per structure holding every
+  list-valued field, the first surviving span for ``dtype="str"`` fields, and choice
+  fields scored through ``score_explicit_spans`` at their prompt-prefix positions.
+  ``extract_json`` (record mode via the record head) is not exercised here.
+* v1's count-slot multi-instance structures therefore collapse to one instance
+  (``struct_multi_instance`` and friends), and there is no ``max_width``: any span
+  length is representable.
+* Default overlap policy is ``flat`` (max-total-confidence non-overlapping set), a
+  per-query abstention gate can empty a label (``sigmoid(null_logit) > 0.5``), and
+  relations come from the sparse typed pair generator + ``relation_scorer`` with the
+  boundary-specific edge deduplication.
+* Everything else (prompt layout, ``"."`` suffixing, word offsets, ``include_spans``
+  character offsets, classification decode) is shared with v1.
 """
 
+import argparse
 import json
 import math
 import os
@@ -46,10 +77,39 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from gliner2 import GLiNER2
+FIXTURES_DIR = Path(__file__).parent.parent / "Tests" / "GLiNER2SwiftTests" / "Fixtures"
+DEFAULT_MODELS = {
+    "span": os.environ.get("GLINER2_CORPUS_MODEL", "fastino/gliner2-base-v1"),
+    "boundary": os.environ.get("GLINER2_CORPUS_MODEL", "fastino/gliner2.5-small-v1"),
+}
 
-MODEL_ID = os.environ.get("GLINER2_CORPUS_MODEL", "fastino/gliner2-base-v1")
-OUTPUT_DIR = Path(__file__).parent.parent / "Tests" / "GLiNER2SwiftTests" / "Fixtures" / "prediction_corpus"
+
+def model_size_name(model_id: str) -> str:
+    """'fastino/gliner2.5-small-v1' -> 'small' (falls back to a sanitised basename)."""
+    base = os.path.basename(model_id.rstrip("/")).lower()
+    for size in ("small", "base", "multi", "large"):
+        if f"-{size}-" in base or base.endswith(f"-{size}") or f"-{size}_" in base:
+            return size
+    return "".join(ch if ch.isalnum() else "_" for ch in base)
+
+
+def default_output_dir(architecture: str, model_id: str) -> Path:
+    if architecture == "boundary":
+        return FIXTURES_DIR / "prediction_corpus_boundary" / model_size_name(model_id)
+    return FIXTURES_DIR / "prediction_corpus"
+
+
+def load_model(architecture: str, model_id: str):
+    """Span checkpoints load through the v1 class; boundary ones through AutoExtractor.
+    Both expose the same ``create_schema`` / ``extract`` runtime API."""
+    if architecture == "boundary":
+        from gliner2 import AutoExtractor
+        model = AutoExtractor.from_pretrained(model_id)
+        if getattr(model, "architecture", None) != "boundary":
+            raise SystemExit(f"{model_id} is not a boundary checkpoint")
+        return model
+    from gliner2 import GLiNER2
+    return GLiNER2.from_pretrained(model_id)
 
 # --------------------------------------------------------------------------------------
 # Corpus definition
@@ -282,6 +342,84 @@ CASES = [
 # Schema construction (mirrored by PredictionParityTests.swift)
 # --------------------------------------------------------------------------------------
 
+# GLiNER 2.5 record mode (Instance Formation head). Only meaningful for boundary
+# checkpoints: `mode` / `anchor` on a structure, `cardinality` / `exclusive` on a field.
+# `records_json_api` mirrors what `extract_json` builds on a 2.5 model (natural mode, first
+# field anchor, str fields required_one, others zero_or_more, everything exclusive).
+BOUNDARY_ONLY_CASES = [
+    dict(name="records_json_api",
+         text=("Alice Johnson works at Acme Corp as an engineer. "
+               "Bob Smith works at Globex as a manager."),
+         threshold=0.5,
+         schema={"structures": [{"name": "employment", "mode": "natural",
+                                 "fields": [{"name": "employee", "dtype": "str",
+                                             "cardinality": "required_one", "exclusive": True},
+                                            {"name": "employer", "dtype": "str",
+                                             "cardinality": "required_one", "exclusive": True},
+                                            {"name": "role", "cardinality": "zero_or_more",
+                                             "exclusive": True}]}]},
+         tags=["records"]),
+    dict(name="records_natural_defaults",
+         text=("Alice Johnson works at Acme Corp. Bob Smith works at Globex. "
+               "Carol White works at Initech."),
+         threshold=0.5,
+         schema={"structures": [{"name": "employment", "mode": "natural",
+                                 "fields": [{"name": "employee"}, {"name": "employer"}]}]},
+         tags=["records"]),
+    dict(name="records_explicit_anchor",
+         text="Acme Corp hired Alice Johnson. Globex hired Bob Smith.",
+         threshold=0.5,
+         schema={"structures": [{"name": "hiring", "mode": "natural", "anchor": "company",
+                                 "fields": [{"name": "person", "dtype": "str"},
+                                            {"name": "company", "dtype": "str"}]}]},
+         tags=["records"]),
+    dict(name="records_choices_literal",
+         text="The laptop arrived damaged and I want a refund. The charger works fine.",
+         threshold=0.5,
+         schema={"structures": [{"name": "ticket", "mode": "natural",
+                                 "fields": [{"name": "product", "dtype": "str",
+                                             "cardinality": "required_one", "exclusive": True},
+                                            {"name": "resolution", "dtype": "str",
+                                             "choices": ["refund", "exchange", "repair"],
+                                             "cardinality": "required_one", "exclusive": True}]}]},
+         tags=["records", "choices"]),
+    dict(name="records_choices_scored",
+         text="My headphones stopped working after two days.",
+         threshold=0.5,
+         schema={"structures": [{"name": "ticket", "mode": "natural",
+                                 "fields": [{"name": "product", "dtype": "str",
+                                             "cardinality": "required_one", "exclusive": True},
+                                            {"name": "issue",
+                                             "choices": ["damaged", "defective", "late"],
+                                             "cardinality": "zero_or_more", "exclusive": True}]}]},
+         tags=["records", "choices"]),
+    dict(name="records_latent",
+         text="Tim Cook leads Apple. Satya Nadella leads Microsoft.",
+         threshold=0.5,
+         schema={"structures": [{"name": "leadership", "mode": "latent",
+                                 "fields": [{"name": "person", "dtype": "str"},
+                                            {"name": "company", "dtype": "str"}]}]},
+         tags=["records"]),
+    dict(name="records_anchorless",
+         text="Tim Cook leads Apple. Satya Nadella leads Microsoft.",
+         threshold=0.5,
+         schema={"structures": [{"name": "leadership", "mode": "anchorless",
+                                 "fields": [{"name": "person", "dtype": "str"},
+                                            {"name": "company", "dtype": "str"}]}]},
+         tags=["records"]),
+    dict(name="records_with_entities",
+         text="Jane Doe joined Initech in Austin in 2019.",
+         threshold=0.5,
+         schema={"entities": ["location", "date"],
+                 "structures": [{"name": "employment", "mode": "natural",
+                                 "fields": [{"name": "employee", "dtype": "str",
+                                             "cardinality": "required_one", "exclusive": True},
+                                            {"name": "employer", "dtype": "str",
+                                             "cardinality": "required_one", "exclusive": True}]}]},
+         tags=["records"]),
+]
+
+
 def build_schema(model, spec):
     """Build a gliner2 Schema from the declarative spec."""
     schema = model.create_schema()
@@ -290,14 +428,22 @@ def build_schema(model, spec):
         schema = schema.entities(spec["entities"])
 
     for struct in spec.get("structures", []):
-        builder = schema.structure(struct["name"])
+        record_kwargs = {key: struct[key] for key in ("mode", "anchor", "occurrence_policy")
+                         if struct.get(key) is not None}
+        builder = schema.structure(struct["name"], **record_kwargs)
         for field in struct["fields"]:
+            field_kwargs = {}
+            if field.get("cardinality") is not None:
+                field_kwargs["cardinality"] = field["cardinality"]
+            if field.get("exclusive"):
+                field_kwargs["exclusive"] = True
             builder = builder.field(
                 field["name"],
                 dtype=field.get("dtype", "list"),
                 choices=field.get("choices"),
                 description=field.get("description"),
                 threshold=field.get("threshold"),
+                **field_kwargs,
             )
         schema = builder.done() if hasattr(builder, "done") else builder
 
@@ -354,7 +500,13 @@ def run_case(model, case):
         "name": case["name"],
         "text": case["text"],
         "threshold": case["threshold"],
-        "schema": case["schema"],
+        "schema": {
+            **case["schema"],
+            # JSON objects do not carry declaration order; the Swift harness reads it back
+            # from here so dictionary-form entities keep Python's prompt order.
+            **({"entity_order": list(case["schema"]["entities"].keys())}
+               if isinstance(case["schema"].get("entities"), dict) else {}),
+        },
         "tags": case.get("tags", []),
         "expected": result,
         "margins": collect_margins(result, case["threshold"]),
@@ -392,13 +544,25 @@ def build_borderline_cases(model, base_cases, delta=0.01):
 
 
 def main():
-    print(f"Loading {MODEL_ID} ...")
-    model = GLiNER2.from_pretrained(MODEL_ID)
+    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    parser.add_argument("--architecture", choices=("span", "boundary"), default="span")
+    parser.add_argument("--model", default=None, help="HF id or local checkpoint directory")
+    parser.add_argument("--output", default=None, help="Output directory (default per architecture)")
+    args = parser.parse_args()
+
+    MODEL_ID = args.model or DEFAULT_MODELS[args.architecture]
+    OUTPUT_DIR = Path(args.output) if args.output else default_output_dir(args.architecture, MODEL_ID)
+
+    print(f"Loading {MODEL_ID} ({args.architecture}) ...")
+    model = load_model(args.architecture, MODEL_ID)
+    if hasattr(model, "eval"):
+        model.eval()
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     cases_out = []
 
-    for case in CASES:
+    cases = list(CASES) + (BOUNDARY_ONLY_CASES if args.architecture == "boundary" else [])
+    for case in cases:
         record = run_case(model, case)
         cases_out.append(record)
         tight = [m for m in record["margins"] if m["margin"] < 0.05]
@@ -425,9 +589,14 @@ def main():
 
     corpus = {
         "model": MODEL_ID,
+        "architecture": args.architecture,
         "generator": "scripts/generate_prediction_corpus.py",
         "note": ("Python ground truth. Swift must reproduce `expected` exactly for "
-                 "text/start/end/label; confidences within the tier-C tolerance."),
+                 "text/start/end/label; confidences within the tier-C tolerance."
+                 + (" Boundary (GLiNER 2.5) runtime: structures without a `mode` use the "
+                    "legacy (non-record) decoder; `records_*` cases exercise the record "
+                    "head; overlap policy 'flat', abstention gate."
+                    if args.architecture == "boundary" else "")),
         "cases": cases_out,
     }
     path = OUTPUT_DIR / "corpus.json"

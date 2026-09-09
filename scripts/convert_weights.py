@@ -25,12 +25,31 @@ The output directory is self-contained and loads directly through
     tokenizer.json      copied from the source (the only tokenizer file Swift reads)
     tokenizer_config.json, spm.model, ...   copied through for completeness
 
-What it does to the weights:
+What it does to the weights (v1 "span" checkpoints, `config.architecture` absent/"span"):
   - DeBERTa encoder (disentangled attention, share_att_key=true — NO pos_key/query_proj)
   - SpanMarkerV0 span representation, CountLSTMv2 (GRU + DownscaledTransformer),
     classifier / count-prediction MLPs
   - PyTorch snake_case -> Swift camelCase key remapping
   - DownscaledTransformer combined in_proj -> split q/k/v
+
+GLiNER 2.5 "boundary" checkpoints (`config.architecture == "boundary"`, e.g.
+fastino/gliner2.5-{small,base,multi}-v1):
+  - `encoder.*` (198 tensors) goes through the very same encoder path (fp16/fp32/bf16 or
+    `--quantize int8`); the 136 head tensors always stay at the float dtype.
+  - Head keys are remapped with ONE rule:
+    every path segment snake_case -> camelCase, `nn.ModuleList` indices are kept
+    (`attention_blocks.0` -> `attentionBlocks.0`), `nn.Sequential` indices become the
+    ORDINAL of the Linear layer under `.layers.` exactly like the v1 `classifier.2 ->
+    classifier.layers.1` mapping (`classifier.3` -> `classifier.layers.1`,
+    `shared_pool_scorer.film_output.3` -> `sharedPoolScorer.filmOutput.layers.1`,
+    `relation_scorer.mlp.3` -> `relationScorer.mlp.layers.1`), leaf `weight`/`bias`
+    unchanged, e.g. `record_decoder.instance_embed` -> `recordDecoder.instanceEmbed`.
+  - `config.json` is the original 2.5 config (+ `quantization` when quantized),
+    `encoder_config/config.json` is copied (the Swift loader reads it), and
+    `weight_mapping.json` records the full pytorch -> swift key table.
+
+    python convert_weights.py --model fastino/gliner2.5-small-v1 \
+        --output ../out/gliner25_small_mlx_fp16 --dtype fp16
 
 Quantization (`--quantize int8`):
   Reproduces exactly what `Extractor.quantize(.int8)` does at load time in Swift:
@@ -80,6 +99,16 @@ SIDE_CAR_FILES = [
     "special_tokens_map.json",
     "added_tokens.json",
 ]
+
+# Copied into `<output>/encoder_config/config.json` for boundary checkpoints (the Swift
+# loader reads hidden_size / vocab_size / layer counts from it, as Python does).
+ENCODER_CONFIG_FILE = "encoder_config/config.json"
+
+# Boundary head containers whose integer children are `nn.Sequential` slots
+# (Linear/activation/dropout interleaved) -> Swift `.layers.<linear ordinal>`.
+BOUNDARY_SEQUENTIAL_CONTAINERS = {"classifier", "film_output", "mlp"}
+# `nn.ModuleList`s: the integer index is the block index and is kept verbatim.
+BOUNDARY_MODULE_LISTS = {"attention_blocks", "refinement_blocks"}
 
 
 def resolve_source_file(model: str, filename: str) -> Optional[str]:
@@ -131,6 +160,74 @@ def map_weight_name(pytorch_name: str) -> str:
         if pytorch_name.startswith(pt_prefix):
             return pytorch_name.replace(pt_prefix, swift_prefix, 1)
     return pytorch_name
+
+
+def snake_to_camel(segment: str) -> str:
+    """`shared_pool_scorer` -> `sharedPoolScorer`; already-camel / single words unchanged."""
+    parts = segment.split("_")
+    return parts[0] + "".join(part[:1].upper() + part[1:] for part in parts[1:])
+
+
+def boundary_sequential_ordinals(keys) -> Dict[str, Dict[int, int]]:
+    """For every `nn.Sequential` container path (e.g. `relation_scorer.mlp`) map the
+    PyTorch slot index to the Linear ordinal: {0: 0, 3: 1} for Linear/GELU/Dropout/Linear."""
+    slots: Dict[str, set] = {}
+    for key in keys:
+        parts = key.split(".")
+        for i in range(1, len(parts)):
+            if parts[i].isdigit() and parts[i - 1] in BOUNDARY_SEQUENTIAL_CONTAINERS:
+                slots.setdefault(".".join(parts[:i]), set()).add(int(parts[i]))
+    return {path: {slot: ordinal for ordinal, slot in enumerate(sorted(indices))}
+            for path, indices in slots.items()}
+
+
+def map_boundary_weight_name(pytorch_name: str, ordinals: Dict[str, Dict[int, int]]) -> str:
+    """Apply the Appendix A rule to one non-encoder key of a boundary checkpoint."""
+    parts = pytorch_name.split(".")
+    out = []
+    for i, part in enumerate(parts):
+        if part.isdigit():
+            container = parts[i - 1] if i > 0 else ""
+            if container in BOUNDARY_SEQUENTIAL_CONTAINERS:
+                out.append("layers")
+                out.append(str(ordinals[".".join(parts[:i])][int(part)]))
+            elif container in BOUNDARY_MODULE_LISTS:
+                out.append(part)
+            else:
+                print(f"WARNING: unknown integer segment in {pytorch_name}; keeping index")
+                out.append(part)
+        elif i == len(parts) - 1 and part in ("weight", "bias"):
+            out.append(part)
+        else:
+            out.append(snake_to_camel(part))
+    return ".".join(out)
+
+
+def convert_boundary_to_swift_keys(
+    weights: Dict[str, torch.Tensor]
+) -> "tuple[Dict[str, torch.Tensor], Dict[str, str]]":
+    """Boundary checkpoint -> (Swift-keyed tensors, pytorch->swift mapping).
+    `encoder.*` passes through unchanged; everything else follows Appendix A."""
+    head_keys = [k for k in weights if not k.startswith("encoder.")]
+    ordinals = boundary_sequential_ordinals(head_keys)
+    mapping: Dict[str, str] = {}
+    out: Dict[str, torch.Tensor] = {}
+    for name, tensor in weights.items():
+        swift = name if name.startswith("encoder.") else map_boundary_weight_name(name, ordinals)
+        if swift in out:
+            raise ValueError(f"key collision: {name} and another key both map to {swift}")
+        mapping[name] = swift
+        out[swift] = tensor
+    return out, mapping
+
+
+def load_source_config(model: str) -> Dict:
+    src = resolve_source_file(model, "config.json")
+    return json.load(open(src)) if src else {}
+
+
+def architecture_of(config: Dict) -> str:
+    return str(config.get("architecture", "span") or "span").strip().lower()
 
 
 def convert_transformer_layer_weights(
@@ -193,6 +290,26 @@ def convert_to_swift_keys(weights: Dict[str, torch.Tensor]) -> Dict[str, torch.T
     for name, tensor in model.items():
         out[map_weight_name(name)] = tensor
     return out
+
+
+def convert_checkpoint(
+    weights: Dict[str, torch.Tensor], architecture: str
+) -> "tuple[Dict[str, torch.Tensor], Dict[str, str]]":
+    """Dispatch on `config.architecture`; returns (swift tensors, pytorch->swift mapping)."""
+    if architecture == "boundary":
+        return convert_boundary_to_swift_keys(weights)
+    if architecture != "span":
+        raise ValueError(f"unsupported architecture {architecture!r} (expected 'span' or 'boundary')")
+    swift = convert_to_swift_keys(weights)
+    # The v1 mapping splits in_proj into q/k/v, so record it per *output* key.
+    mapping = {}
+    for name in weights:
+        if name.startswith("encoder."):
+            mapping[name] = name
+        else:
+            mapped = map_weight_name(name)
+            mapping[name] = mapped if mapped in swift else f"{mapped} (split into q_proj/k_proj/v_proj)"
+    return swift, mapping
 
 
 # ---------------------------------------------------------------------------
@@ -279,8 +396,9 @@ def write_config(model: str, output_dir: Path, quantize: bool, bits: int, group_
         json.dump(config, f, indent=2)
 
 
-def copy_side_cars(model: str, output_dir: Path) -> None:
-    """Copy tokenizer files (config.json is handled by write_config)."""
+def copy_side_cars(model: str, output_dir: Path, architecture: str = "span") -> None:
+    """Copy tokenizer files (config.json is handled by write_config); for boundary
+    checkpoints also `encoder_config/config.json`."""
     for name in SIDE_CAR_FILES:
         if name == "config.json":
             continue
@@ -288,6 +406,13 @@ def copy_side_cars(model: str, output_dir: Path) -> None:
         if src:
             shutil.copyfile(src, output_dir / name)
             print(f"  copied {name}")
+    if architecture == "boundary":
+        src = resolve_source_file(model, ENCODER_CONFIG_FILE)
+        if src is None:
+            raise FileNotFoundError(f"{ENCODER_CONFIG_FILE} not found for '{model}'")
+        (output_dir / "encoder_config").mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, output_dir / ENCODER_CONFIG_FILE)
+        print(f"  copied {ENCODER_CONFIG_FILE}")
 
 
 def push_to_hub(output_dir: Path, repo_id: str, private: bool, message: str) -> None:
@@ -330,10 +455,14 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Loading weights from: {args.model}")
+    config = load_source_config(args.model)
+    architecture = architecture_of(config)
     weights = get_pytorch_weights(args.model)
-    print(f"  {len(weights)} source tensors")
+    n_encoder = sum(1 for k in weights if k.startswith("encoder."))
+    print(f"  architecture={architecture}  {len(weights)} source tensors "
+          f"({n_encoder} encoder + {len(weights) - n_encoder} head)")
 
-    swift_weights = convert_to_swift_keys(weights)
+    swift_weights, mapping = convert_checkpoint(weights, architecture)
     print(f"  {len(swift_weights)} Swift-keyed tensors")
 
     print(f"Building {'int8-quantized ' if quantize else ''}weights (residual dtype "
@@ -352,7 +481,20 @@ def main() -> None:
     print(f"Saved {weights_path} ({size_mb:.0f} MB, {len(out_arrays)} tensors)")
 
     write_config(args.model, output_dir, quantize, args.q_bits, args.q_group_size)
-    copy_side_cars(args.model, output_dir)
+    copy_side_cars(args.model, output_dir, architecture)
+
+    with open(output_dir / "weight_mapping.json", "w") as f:
+        json.dump({
+            "architecture": architecture,
+            "source": args.model,
+            "rule": ("encoder.* unchanged; head: per-segment snake_case->camelCase, ModuleList "
+                     "indices kept, nn.Sequential slot index -> .layers.<Linear ordinal>, "
+                     "leaf weight/bias unchanged") if architecture == "boundary"
+                    else "v1 span mapping (map_weight_name + in_proj q/k/v split)",
+            "quantized_encoder_linears": num_quantized if quantize else 0,
+            "mapping": mapping,
+        }, f, indent=2)
+    print("  wrote weight_mapping.json")
 
     print("\n" + "=" * 60)
     print("Conversion complete.")
