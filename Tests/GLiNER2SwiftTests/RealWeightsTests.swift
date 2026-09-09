@@ -274,7 +274,7 @@ final class RealWeightsTests: XCTestCase {
         let config = try ExtractorConfig.load(from: configUrl)
 
         // Create extractor
-        let extractor = Extractor(config: config)
+        let extractor = SpanExtractor(config: config)
 
         // Load combined model weights
         let modelWeightsUrl = URL(fileURLWithPath: "\(Self.weightsPath)/model.safetensors")
@@ -507,7 +507,7 @@ final class RealWeightsTests: XCTestCase {
         // Load config and create model
         let configUrl = URL(fileURLWithPath: "\(Self.weightsPath)/config.json")
         let config = try ExtractorConfig.load(from: configUrl)
-        let extractor = Extractor(config: config)
+        let extractor = SpanExtractor(config: config)
 
         print("\n2. CHECKING MODEL BEFORE WEIGHT LOADING:")
         if let linear0 = extractor.spanRep.getSpanRepLayer().projectStart.layers[0] as? Linear {
@@ -640,7 +640,7 @@ final class RealWeightsTests: XCTestCase {
         }
 
         // Check countPred weights
-        if let linear = model.model.countPred.layers[0] as? Linear {
+        if let linear = model.spanModel!.countPred.layers[0] as? Linear {
             let weight = linear.weight
             MLX.eval(weight)
             let weightSum = MLX.sum(MLX.abs(weight))
@@ -657,7 +657,7 @@ final class RealWeightsTests: XCTestCase {
         }
 
         // Check countEmbed GRU weights (should be accessible)
-        let gruWeightIH = model.model.countEmbed.gru.weightIH
+        let gruWeightIH = model.spanModel!.countEmbed.gru.weightIH
         MLX.eval(gruWeightIH)
         let gruSum = MLX.sum(MLX.abs(gruWeightIH))
         MLX.eval(gruSum)
@@ -981,7 +981,7 @@ final class RealWeightsTests: XCTestCase {
 
         // Count prediction
         print("\n8. COUNT PREDICTION")
-        let countLogits = model.model.countPred(embs[0].expandedDimensions(axis: 0))
+        let countLogits = model.spanModel!.countPred(embs[0].expandedDimensions(axis: 0))
         MLX.eval(countLogits)
         print("   Count logits shape: \(countLogits.shape)")
         print("   Count logits values: \(countLogits)")
@@ -1019,7 +1019,7 @@ final class RealWeightsTests: XCTestCase {
         print("   Python: out_project=22006.92")
         print("   --- Swift Actual Values ---")
 
-        let spanInfo = model.model.computeSpanRep(textEmbeddings, debug: true)
+        let spanInfo = model.spanModel!.computeSpanRep(textEmbeddings, debug: true)
         print("   Span rep shape: \(spanInfo.spanRep.shape)")
         print("   Spans idx shape: \(spanInfo.spansIdx.shape)")
 
@@ -1032,7 +1032,7 @@ final class RealWeightsTests: XCTestCase {
         let fieldEmbs = embs[1...]
         print("    Field embs shape: \(fieldEmbs.shape)")
 
-        let structProj = model.model.countEmbed(fieldEmbs, goldCountVal: predCount)
+        let structProj = model.spanModel!.countEmbed(fieldEmbs, goldCountVal: predCount)
         MLX.eval(structProj)
         print("    Struct proj shape: \(structProj.shape)")
 
@@ -2176,7 +2176,7 @@ final class RealWeightsTests: XCTestCase {
 
         // Count prediction
         print("\n9. COUNT PREDICTION")
-        let countLogits = model.model.countPred(embs[0].expandedDimensions(axis: 0))
+        let countLogits = model.spanModel!.countPred(embs[0].expandedDimensions(axis: 0))
         MLX.eval(countLogits)
         let predCountIdx = MLX.argMax(countLogits.squeezed(axis: 0))
         MLX.eval(predCountIdx)
@@ -2190,7 +2190,7 @@ final class RealWeightsTests: XCTestCase {
 
         // Span representation
         print("\n10. SPAN REPRESENTATION")
-        let spanInfo = model.model.computeSpanRep(textEmbeddings)
+        let spanInfo = model.spanModel!.computeSpanRep(textEmbeddings)
         MLX.eval(spanInfo.spanRep)
         print("   Span rep shape: \(spanInfo.spanRep.shape)")
         let spanRepL1 = MLX.sum(MLX.abs(spanInfo.spanRep))
@@ -2200,7 +2200,7 @@ final class RealWeightsTests: XCTestCase {
         // Count embed
         print("\n11. COUNT EMBED")
         let fieldEmbs = embs[1...]  // Skip [P]
-        let structProj = model.model.countEmbed(fieldEmbs, goldCountVal: predCount)
+        let structProj = model.spanModel!.countEmbed(fieldEmbs, goldCountVal: predCount)
         MLX.eval(structProj)
         print("   Field embs shape: \(fieldEmbs.shape)")
         print("   Struct proj shape: \(structProj.shape)")

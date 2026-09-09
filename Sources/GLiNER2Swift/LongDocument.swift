@@ -94,7 +94,19 @@ extension GLiNER2 {
             return Self.shiftSpans(raw, by: chunk.charOffset)
         }
 
-        var merged = Self.mergeChunkResults(perChunk)
+        var merged: [String: Any]
+        if let boundary = boundaryModel {
+            // GLiNER2.5 merges with the shared overlap resolver (chunking.py in gliner2
+            // 2.0): per label, the maximum-total-confidence non-overlapping set of the
+            // spans seen across chunks, ordered by position.
+            let scalarLabels = Set(schema.metadata.entityMetadata
+                .filter { $0.value.dtype != "list" }.map(\.key))
+            merged = Self.mergeChunkResultsResolvingOverlaps(
+                perChunk, policy: boundary.settings.canonicalOverlapPolicy,
+                scalarEntityLabels: scalarLabels)
+        } else {
+            merged = Self.mergeChunkResults(perChunk)
+        }
         // Strip the span/confidence metadata the caller did not ask for (we always compute
         // it internally for remapping and merging).
         merged = Self.applyOutputFlags(merged, includeConfidence: includeConfidence,
@@ -263,6 +275,184 @@ extension GLiNER2 {
         var out: [String: Any] = [:]
         for name in order { out[name] = dedupList(byName[name] ?? []) }
         return out
+    }
+
+    // MARK: - Merge with overlap resolution (gliner2 2.0 chunking.py)
+
+    /// `merge_chunk_results` as gliner2 2.0 does it for every architecture: entity spans of
+    /// a label from all chunks go through `resolve_overlaps(policy)` and come back ordered
+    /// by position; other predictions are de-duplicated on a confidence-insensitive key,
+    /// keeping the higher-confidence copy. Used by the boundary path; the v1 span path
+    /// keeps `mergeChunkResults` (its parity corpus was recorded against gliner2 1.2).
+    static func mergeChunkResultsResolvingOverlaps(
+        _ chunks: [[String: Any]], policy: OverlapPolicy, scalarEntityLabels: Set<String>
+    ) -> [String: Any] {
+        guard !chunks.isEmpty else { return [:] }
+        var out: [String: Any] = [:]
+        var keyOrder: [String] = []
+        for chunk in chunks { for key in chunk.keys where !keyOrder.contains(key) { keyOrder.append(key) } }
+
+        for key in keyOrder {
+            let values = chunks.compactMap { $0[key] }
+            if key == "entities" {
+                out[key] = mergeEntityMaps(values, scalarLabels: scalarEntityLabels, policy: policy)
+            } else if key == "relation_extraction" {
+                out[key] = mergeRelationMaps(values)
+            } else {
+                out[key] = mergeValues(values, policy: policy) ?? NSNull()
+            }
+        }
+        return out
+    }
+
+    private static func mergeEntityMaps(
+        _ values: [Any], scalarLabels: Set<String>, policy: OverlapPolicy
+    ) -> [String: Any] {
+        var labels: [String] = []
+        for value in values {
+            guard let dict = value as? [String: Any] else { continue }
+            for label in dict.keys where !labels.contains(label) { labels.append(label) }
+        }
+        var merged: [String: Any] = [:]
+        for label in labels {
+            var items: [Any] = []
+            for value in values {
+                if let dict = value as? [String: Any], let v = dict[label] { items += asList(v) }
+            }
+            let deduped = dedupeItems(items, policy: policy)
+            if scalarLabels.contains(label) {
+                merged[label] = deduped.first ?? NSNull()
+            } else {
+                merged[label] = deduped
+            }
+        }
+        return merged
+    }
+
+    private static func mergeRelationMaps(_ values: [Any]) -> [String: Any] {
+        var labels: [String] = []
+        for value in values {
+            guard let dict = value as? [String: Any] else { continue }
+            for label in dict.keys where !labels.contains(label) { labels.append(label) }
+        }
+        var merged: [String: Any] = [:]
+        for label in labels {
+            var items: [Any] = []
+            for value in values {
+                if let dict = value as? [String: Any], let v = dict[label] { items += asList(v) }
+            }
+            merged[label] = dedupeItems(items, policy: nil)
+        }
+        return merged
+    }
+
+    private static func isEmptyValue(_ value: Any) -> Bool {
+        if value is NSNull { return true }
+        if let d = value as? [String: Any] { return d.isEmpty }
+        if let a = value as? [Any] { return a.isEmpty }
+        return false
+    }
+
+    private static func isSpanDict(_ value: Any) -> Bool {
+        guard let d = value as? [String: Any] else { return false }
+        return d["text"] != nil && d["start"] is Int && d["end"] is Int
+    }
+
+    private static func isClassificationDict(_ value: Any) -> Bool {
+        guard let d = value as? [String: Any] else { return false }
+        return d["label"] != nil && d["confidence"] != nil
+    }
+
+    private static func confidence(of value: Any) -> Double {
+        if let d = value as? [String: Any] {
+            if let c = d["confidence"] as? Double { return c }
+            if let c = d["confidence"] as? Float { return Double(c) }
+            return d.values.map(confidence(of:)).max() ?? 0
+        }
+        if let a = value as? [Any] { return a.map(confidence(of:)).max() ?? 0 }
+        return 0
+    }
+
+    /// `_merge_values`.
+    private static func mergeValues(_ values: [Any], policy: OverlapPolicy) -> Any? {
+        let nonEmpty = values.filter { !isEmptyValue($0) }
+        guard !nonEmpty.isEmpty else { return values.first }
+        if nonEmpty.allSatisfy(isClassificationDict) {
+            return nonEmpty.max { confidence(of: $0) < confidence(of: $1) }
+        }
+        if nonEmpty.allSatisfy({ $0 is String }) {
+            let strings = nonEmpty.map { $0 as! String }
+            var counts: [String: Int] = [:]
+            for s in strings { counts[s, default: 0] += 1 }
+            // max by (count, earliest first occurrence)
+            var best = strings[0]
+            for s in strings where counts[s]! > counts[best]! { best = s }
+            return best
+        }
+        if nonEmpty.allSatisfy({ $0 is [Any] }) {
+            return dedupeItems(nonEmpty.flatMap { $0 as! [Any] }, policy: policy)
+        }
+        if nonEmpty.allSatisfy({ $0 is [String: Any] }) {
+            let dicts = nonEmpty.map { $0 as! [String: Any] }
+            var keys: [String] = []
+            for d in dicts { for k in d.keys where !keys.contains(k) { keys.append(k) } }
+            var merged: [String: Any] = [:]
+            for k in keys {
+                merged[k] = mergeValues(dicts.compactMap { $0[k] }, policy: policy) ?? NSNull()
+            }
+            return merged
+        }
+        return nonEmpty.first
+    }
+
+    /// `_dedupe_items`: span dicts through the overlap resolver (default `allow`), then
+    /// ordered by (start, end, text); everything else on a confidence-insensitive key.
+    private static func dedupeItems(_ items: [Any], policy: OverlapPolicy?) -> [Any] {
+        let spanItems = items.filter(isSpanDict).map { $0 as! [String: Any] }
+        let otherItems = items.filter { !isSpanDict($0) }
+
+        var deduped: [Any] = []
+        if !spanItems.isEmpty {
+            let scored = spanItems.map {
+                ScoredSpan(score: Float(confidence(of: $0)), start: $0["start"] as! Int, end: $0["end"] as! Int)
+            }
+            let selected = OverlapResolver.resolve(scored, policy: policy ?? .allow)
+            // Map the resolved spans back to their dicts (the resolver keeps the highest
+            // ranked representative of exact duplicates, which is the first by rank).
+            var chosen: [[String: Any]] = []
+            for span in selected {
+                if let match = spanItems.first(where: {
+                    ($0["start"] as! Int) == span.start && ($0["end"] as! Int) == span.end
+                        && Float(confidence(of: $0)) == span.score
+                }) { chosen.append(match) }
+            }
+            chosen.sort { a, b in
+                let ka = (a["start"] as! Int, a["end"] as! Int, a["text"] as? String ?? "")
+                let kb = (b["start"] as! Int, b["end"] as! Int, b["text"] as? String ?? "")
+                return ka < kb
+            }
+            deduped += chosen
+        }
+
+        var seen: [String: Int] = [:]
+        var others: [Any] = []
+        for item in otherItems {
+            let key = stableKey(item)
+            if let idx = seen[key] {
+                if confidence(of: item) > confidence(of: others[idx]) { others[idx] = item }
+            } else {
+                seen[key] = others.count
+                others.append(item)
+            }
+        }
+        deduped += others
+        return deduped
+    }
+
+    private static func asList(_ value: Any) -> [Any] {
+        if value is NSNull { return [] }
+        if let a = value as? [Any] { return a }
+        return [value]
     }
 
     // MARK: - Dedup helpers

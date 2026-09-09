@@ -50,7 +50,7 @@ public class GLiNER2 {
     ///   - processor: Schema processor
     public init(config: ExtractorConfig, processor: SchemaTransformer) {
         self.config = config
-        self.model = Extractor(config: config)
+        self.model = Extractor.make(config: config)
         self.processor = processor
     }
 
@@ -125,8 +125,9 @@ public class GLiNER2 {
             }
         }
 
-        // 1. Load configuration
-        let config = try ExtractorConfig.load(from: configUrl)
+        // 1. Load configuration (config.json + encoder_config/config.json when present)
+        _ = configUrl
+        let config = try ExtractorConfig.load(fromDirectory: baseUrl)
 
         // 2. Initialize processor with tokenizer
         let poolingType: TokenPoolingType
@@ -330,7 +331,7 @@ public class GLiNER2 {
         // Transform all texts
         var records: [TransformedRecord] = []
         for text in texts {
-            let normalizedText = normalizeText(text)
+            let normalizedText = Self.normalizeText(text)
             let record = processor.transform(text: normalizedText, schema: internalSchemaDict, maxLen: maxLen)
             records.append(record)
         }
@@ -552,12 +553,21 @@ public class GLiNER2 {
     }
 
     /// Build a one-structure schema from field specs in the mini-language.
+    ///
+    /// On a GLiNER2.5 checkpoint with the record head the structure decodes in natural
+    /// record mode (first field = anchor, `str` fields `required_one`, others
+    /// `zero_or_more`, all exclusive) exactly like Python's `_json_schema`; pass an
+    /// explicit `Schema.structure(name, mode: nil)` to keep the legacy decoder.
     private func jsonSchema(name: String, fields: [String]) -> Schema {
-        let builder = createSchema().structure(name)
+        let recordMode: String? = (boundaryModel?.settings.enableRecords ?? false) ? "natural" : nil
+        let builder = createSchema().structure(name, mode: recordMode)
         for spec in fields {
             let parsed = Self.parseJSONFieldSpec(spec)
             builder.field(parsed.name, dtype: parsed.dtype,
-                          choices: parsed.choices, description: parsed.description)
+                          choices: parsed.choices, description: parsed.description,
+                          cardinality: recordMode == nil ? nil
+                              : (parsed.dtype == "str" ? "required_one" : "zero_or_more"),
+                          exclusive: recordMode != nil)
         }
         return builder.done()
     }
@@ -651,7 +661,8 @@ public class GLiNER2 {
 
     // MARK: - Private Helpers
 
-    private func normalizeText(_ text: String) -> String {
+    /// Python `_collate_batch`: text must end in `.`, `!` or `?` (empty text becomes `.`).
+    static func normalizeText(_ text: String) -> String {
         var normalized = text
         if !normalized.isEmpty && !normalized.hasSuffix(".") &&
            !normalized.hasSuffix("!") && !normalized.hasSuffix("?") {
@@ -704,6 +715,15 @@ public class GLiNER2 {
         includeSpans: Bool
     ) -> [[String: Any]] {
         guard !batch.isEmpty else { return [] }
+
+        // GLiNER2.5 checkpoints decode through the boundary head (GLiNER2+Boundary.swift).
+        if let boundary = boundaryModel {
+            return decodeBoundaryBatch(
+                model: boundary, batch: batch, hiddenStates: hiddenStates,
+                threshold: threshold, metadata: metadata,
+                includeConfidence: includeConfidence, includeSpans: includeSpans)
+        }
+        guard let model = spanModel else { return batch.originalTexts.map { _ in [:] } }
 
         var results: [[String: Any]] = []
         let decoder = SpanDecoder(maxWidth: config.maxWidth)
@@ -942,13 +962,14 @@ public class GLiNER2 {
     /// Extract classification result using the classifier MLP.
     ///
     /// Matches Python: GLiNER2._extract_classification_result()
-    private func extractClassificationResult(
+    func extractClassificationResult(
         results: inout [String: Any],
         schemaName: String,
         schema: [String: Any],
         embs: MLXArray,
         schemaTokens: [String],
-        includeConfidence: Bool
+        includeConfidence: Bool,
+        temperature: Float = 1.0
     ) {
         // Find the classification config for this schema
         guard let classifications = schema["classifications"] as? [[String: Any]] else { return }
@@ -977,6 +998,7 @@ public class GLiNER2 {
         // Run classifier MLP: [numLabels, hidden] -> [numLabels, 1] -> [numLabels]
         var logits = model.classifier(clsEmbeds)  // [numLabels, 1]
         logits = logits.squeezed(axis: -1)  // [numLabels]
+        if temperature != 1.0 { logits = logits / temperature }  // GLiNER2.5 classification_temperature
 
         // Apply activation
         var probs: MLXArray
@@ -1109,7 +1131,8 @@ public class GLiNER2 {
         let fieldEmbs = embs[1...]  // [numFields, hidden]
 
         // Get count-aware structure projections
-        let structProj = model.countEmbed(fieldEmbs, goldCountVal: predCount)  // [count, fields, hidden]
+        guard let spanModel else { return }
+        let structProj = spanModel.countEmbed(fieldEmbs, goldCountVal: predCount)  // [count, fields, hidden]
 
         // Compute span scores
         let L = spanInfo.spansIdx.dim(1) / config.maxWidth
@@ -1558,6 +1581,18 @@ public class Schema {
         return self
     }
 
+    /// Add entity extraction with descriptions, in a caller-defined order.
+    ///
+    /// Python keeps the declaration order of `Schema.entities({...})`, and the prompt (and
+    /// so the scores) depends on it; a Swift dictionary cannot carry that order, which the
+    /// `[String: String]` overload sorts away. Use this when the order matters.
+    @discardableResult
+    public func entities(_ entityTypes: [String], descriptions: [String: String]) -> Schema {
+        entities(entityTypes)
+        internalSchemaDict["entity_descriptions"] = descriptions.filter { entityTypes.contains($0.key) }
+        return self
+    }
+
     /// Add classification task.
     ///
     /// - Parameters:
@@ -1612,6 +1647,22 @@ public class Schema {
         StructureBuilder(schema: self, name: name)
     }
 
+    /// Start a structure with GLiNER2.5 instance-formation ("record") decoding.
+    ///
+    /// - Parameters:
+    ///   - mode: `"natural"` (one record per anchor mention; `anchor` defaults to the first
+    ///     field), `"latent"` or `"anchorless"`. Only GLiNER2.5 checkpoints honour it; a
+    ///     v1 model decodes the structure the legacy way.
+    ///   - occurrencePolicy: Python `occurrence_policy` (`"all"`, `"first"`,
+    ///     `"error_on_ambiguous"`, `"latent_all"`); informational at inference.
+    public func structure(
+        _ name: String, mode: String?, anchor: String? = nil, occurrencePolicy: String? = nil
+    ) -> StructureBuilder {
+        StructureBuilder(schema: self, name: name, mode: mode, anchor: anchor,
+                         occurrencePolicy: occurrencePolicy)
+    }
+
+
     /// Build the schema dictionary
     public func build() -> [String: Any] {
         internalSchemaDict
@@ -1663,10 +1714,19 @@ public class StructureBuilder {
     private var fields: [String: Any] = [:]
     private var fieldOrder: [String] = []  // Track insertion order
     private var descriptions: [String: String] = [:]
+    // Instance-formation (record) metadata; absent == legacy structure decoding.
+    private let mode: String?
+    private let anchor: String?
+    private let occurrencePolicy: String?
+    private var fieldRecords: [String: RecordFieldConfig] = [:]
 
-    init(schema: Schema, name: String) {
+    init(schema: Schema, name: String, mode: String? = nil, anchor: String? = nil,
+         occurrencePolicy: String? = nil) {
         self.schema = schema
         self.name = name
+        self.mode = mode
+        self.anchor = anchor
+        self.occurrencePolicy = occurrencePolicy
     }
 
     /// Add a field to the structure
@@ -1678,6 +1738,9 @@ public class StructureBuilder {
     ///   - description: Optional description for the field (used in schema tokens)
     ///   - threshold: Optional confidence threshold for this field
     ///   - validators: Optional regex validators; spans failing any of them are dropped
+    ///   - cardinality: GLiNER2.5 record mode only — `"optional_one"`, `"required_one"`,
+    ///     `"zero_or_more"` or `"one_or_more"`; ignored unless the structure declares a mode
+    ///   - exclusive: GLiNER2.5 record mode only — a mention bound here cannot bind elsewhere
     @discardableResult
     public func field(
         _ fieldName: String,
@@ -1685,12 +1748,17 @@ public class StructureBuilder {
         choices: [String]? = nil,
         description: String? = nil,
         threshold: Float? = nil,
-        validators: [RegexValidator]? = nil
+        validators: [RegexValidator]? = nil,
+        cardinality: String? = nil,
+        exclusive: Bool = false
     ) -> StructureBuilder {
         if let choices = choices {
             fields[fieldName] = ["value": "", "choices": choices]
         } else {
             fields[fieldName] = ""
+        }
+        if cardinality != nil || exclusive {
+            fieldRecords[fieldName] = RecordFieldConfig(cardinality: cardinality, exclusive: exclusive)
         }
 
         // Record the per-field configuration so decoding can honour it. Matches Python's
@@ -1748,6 +1816,31 @@ public class StructureBuilder {
             schema.internalSchemaDict["json_descriptions"] = jsonDescriptions
         }
 
+        // Record metadata (Python `_store_record_metadata`): natural mode defaults its
+        // anchor to the first declared field.
+        if let mode {
+            var entry = RecordMetadata(mode: mode, anchor: nil, occurrencePolicy: occurrencePolicy)
+            if mode == "natural" {
+                entry.anchor = anchor ?? order.first
+            }
+            entry.fields = fieldRecords
+            schema.metadata.recordMetadata[name] = entry
+            var recordDict: [String: Any] = ["mode": mode]
+            if let anchor = entry.anchor { recordDict["anchor"] = anchor }
+            if let occurrencePolicy { recordDict["occurrence_policy"] = occurrencePolicy }
+            if !fieldRecords.isEmpty {
+                recordDict["fields"] = fieldRecords.mapValues { cfg -> [String: Any] in
+                    var d: [String: Any] = [:]
+                    if let c = cfg.cardinality { d["cardinality"] = c }
+                    if cfg.exclusive { d["exclusive"] = true }
+                    return d
+                }
+            }
+            var recordMetadata = schema.internalSchemaDict["record_metadata"] as? [String: Any] ?? [:]
+            recordMetadata[name] = recordDict
+            schema.internalSchemaDict["record_metadata"] = recordMetadata
+        }
+
         return schema
     }
 
@@ -1768,6 +1861,7 @@ public class StructureBuilder {
 
 /// Metadata for schema configurations
 public struct SchemaMetadata {
+    var recordMetadata: [String: RecordMetadata] = [:]
     var fieldMetadata: [String: FieldMetadata] = [:]
     var entityMetadata: [String: EntityMetadata] = [:]
     var relationMetadata: [String: RelationMetadata] = [:]

@@ -219,7 +219,7 @@ final class LoRAParityTests: XCTestCase {
         // Load config and create extractor
         let configUrl = URL(fileURLWithPath: Self.baseModelPath + "/config.json")
         let config = try ExtractorConfig.load(from: configUrl)
-        let extractor = Extractor(config: config)
+        let extractor = SpanExtractor(config: config)
 
         // Load weights with LoRA merged
         let baseWeightsUrl = URL(fileURLWithPath: Self.baseModelPath + "/model.safetensors")
