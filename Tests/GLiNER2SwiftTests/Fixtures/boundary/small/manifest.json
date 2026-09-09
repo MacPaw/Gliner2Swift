@@ -1,0 +1,113 @@
+{
+  "model": "fastino/gliner2.5-small-v1",
+  "revision": "cab1bddfd30fda7b803a4691c41f90378a2d517a",
+  "generator": "scripts/generate_boundary_fixtures.py",
+  "versions": {
+    "python": "3.11.15",
+    "torch": "2.14.0",
+    "transformers": "4.57.6",
+    "gliner2": "2.0.0",
+    "safetensors": "0.8.0",
+    "numpy": "2.4.6",
+    "platform": "macOS-26.6.2-arm64-arm-64bit"
+  },
+  "cases": {
+    "one_word": {
+      "kind": "standard",
+      "files": {
+        "one_word.safetensors": 407850,
+        "one_word.json": 15672
+      }
+    },
+    "five_words": {
+      "kind": "standard",
+      "files": {
+        "five_words.safetensors": 420363,
+        "five_words.json": 17297
+      }
+    },
+    "mixed_schema": {
+      "kind": "standard",
+      "files": {
+        "mixed_schema.safetensors": 559028,
+        "mixed_schema.json": 34688
+      }
+    },
+    "long_entity": {
+      "kind": "standard",
+      "files": {
+        "long_entity.safetensors": 451789,
+        "long_entity.json": 18592
+      }
+    },
+    "abstain": {
+      "kind": "standard",
+      "files": {
+        "abstain.safetensors": 432996,
+        "abstain.json": 18237
+      }
+    },
+    "overlap_two_labels": {
+      "kind": "standard",
+      "files": {
+        "overlap_two_labels.safetensors": 435122,
+        "overlap_two_labels.json": 20056
+      }
+    },
+    "doc_450": {
+      "kind": "standard",
+      "files": {
+        "doc_450.safetensors": 1441373,
+        "doc_450.json": 55173
+      }
+    },
+    "doc_1200_chunked": {
+      "kind": "long",
+      "files": {
+        "doc_1200_chunked.json": 53019
+      }
+    },
+    "inner_whitespace": {
+      "kind": "standard",
+      "files": {
+        "inner_whitespace.safetensors": 422465,
+        "inner_whitespace.json": 17411
+      }
+    },
+    "batch3": {
+      "kind": "standard",
+      "files": {
+        "batch3.safetensors": 1658498,
+        "batch3.json": 39352
+      }
+    },
+    "classification_only": {
+      "kind": "standard",
+      "files": {
+        "classification_only.safetensors": 13602,
+        "classification_only.json": 16088
+      }
+    },
+    "relations": {
+      "kind": "standard",
+      "files": {
+        "relations.safetensors": 450888,
+        "relations.json": 27435
+      }
+    },
+    "structure_legacy": {
+      "kind": "standard",
+      "files": {
+        "structure_legacy.safetensors": 462979,
+        "structure_legacy.json": 21111
+      }
+    },
+    "abstain_gate": {
+      "kind": "standard",
+      "files": {
+        "abstain_gate.safetensors": 443554,
+        "abstain_gate.json": 18071
+      }
+    }
+  }
+}

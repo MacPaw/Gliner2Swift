@@ -1,0 +1,685 @@
+{
+  "case": "one_word",
+  "kind": "standard",
+  "model": "fastino/gliner2.5-small-v1",
+  "revision": "cab1bddfd30fda7b803a4691c41f90378a2d517a",
+  "generator": "scripts/generate_boundary_fixtures.py",
+  "versions": {
+    "python": "3.11.15",
+    "torch": "2.14.0",
+    "transformers": "4.57.6",
+    "gliner2": "2.0.0",
+    "safetensors": "0.8.0",
+    "numpy": "2.4.6",
+    "platform": "macOS-26.6.2-arm64-arm-64bit"
+  },
+  "seed": 0,
+  "dtype": "float32",
+  "device": "cpu",
+  "batch_size": 1,
+  "text": "Paris",
+  "texts": [
+    "Paris"
+  ],
+  "original_texts": [
+    "Paris."
+  ],
+  "model_texts": [],
+  "schema": {
+    "json_structures": [],
+    "classifications": [],
+    "entities": {
+      "city": ""
+    },
+    "relations": [],
+    "json_descriptions": {},
+    "entity_descriptions": {},
+    "relation_descriptions": {}
+  },
+  "schemas": [
+    {
+      "json_structures": [],
+      "classifications": [],
+      "entities": {
+        "city": ""
+      },
+      "relations": [],
+      "json_descriptions": {},
+      "entity_descriptions": {},
+      "relation_descriptions": {}
+    }
+  ],
+  "schema_dicts_passed_to_collator": [
+    {
+      "json_structures": [],
+      "classifications": [],
+      "entities": {
+        "city": ""
+      },
+      "relations": [],
+      "json_descriptions": {},
+      "entity_descriptions": {},
+      "relation_descriptions": {}
+    }
+  ],
+  "threshold": 0.5,
+  "word_offsets": [
+    0
+  ],
+  "text_word_counts": [
+    2
+  ],
+  "text_lengths": [
+    2
+  ],
+  "start_mappings": [
+    [
+      0,
+      5
+    ]
+  ],
+  "end_mappings": [
+    [
+      5,
+      6
+    ]
+  ],
+  "text_tokens": [
+    [
+      "paris",
+      "."
+    ]
+  ],
+  "schema_tokens": [
+    [
+      [
+        "(",
+        "[P]",
+        "entities",
+        "(",
+        "[E]",
+        "city",
+        ")",
+        ")"
+      ]
+    ]
+  ],
+  "task_types": [
+    [
+      "entities"
+    ]
+  ],
+  "schema_special_indices": [
+    [
+      [
+        1,
+        4
+      ]
+    ]
+  ],
+  "query_layout": [
+    [
+      {
+        "query_id": 0,
+        "task_index": 0,
+        "task_type": "entities",
+        "task_name": "entities",
+        "role_index": 0,
+        "role_name": "city",
+        "field_path": [
+          "city"
+        ],
+        "extractive": true
+      }
+    ]
+  ],
+  "query_layouts": [
+    {
+      "queries": [
+        {
+          "query_id": 0,
+          "task_index": 0,
+          "task_type": "entities",
+          "task_name": "entities",
+          "role_index": 0,
+          "role_name": "city",
+          "field_path": [
+            "city"
+          ],
+          "extractive": true
+        }
+      ],
+      "classification_query_ids": [],
+      "extractive_query_ids": [
+        0
+      ]
+    }
+  ],
+  "ext_specs": [
+    [
+      {
+        "group_index": 0,
+        "field_index": 0,
+        "task_type": "entities",
+        "task_name": "entities",
+        "field_name": "city"
+      }
+    ]
+  ],
+  "cls_specs": [
+    []
+  ],
+  "rel_specs": [
+    []
+  ],
+  "has_record_specs": false,
+  "query_thresholds": [
+    [
+      0.5
+    ]
+  ],
+  "metadata": [
+    {
+      "field_metadata": {},
+      "entity_metadata": {
+        "city": {
+          "dtype": "list",
+          "threshold": null,
+          "validators": []
+        }
+      },
+      "relation_metadata": {},
+      "relation_descriptions": {},
+      "field_orders": {},
+      "entity_order": [
+        "city"
+      ],
+      "relation_order": [],
+      "classification_tasks": [],
+      "entity_attribute_groups": {},
+      "entity_attribute_prompt_labels": {},
+      "entity_attribute_labels": []
+    }
+  ],
+  "boundary_head_settings": {
+    "boundary_dim": 128,
+    "pair_dim": 128,
+    "boundary_refinement_layers": 1,
+    "boundary_ffn_multiplier": 2.0,
+    "start_top_k": 24,
+    "end_top_k": 24,
+    "ends_per_start": 12,
+    "starts_per_end": 12,
+    "candidate_budget": 192,
+    "training_candidate_budget": 192,
+    "max_gold_per_query": 64,
+    "end_block_size": 256,
+    "bidirectional_proposals": true,
+    "use_inside_evidence": true,
+    "dropout": 0.1,
+    "export_mode": "auto",
+    "vectorized_pair_elements": 16777216,
+    "boundary_negative_weight": 0.5,
+    "boundary_marginal_loss": "asymmetric_focal",
+    "loss_reduction": "sum",
+    "boundary_focal_gamma_positive": 0.0,
+    "boundary_focal_gamma_negative": 2.0,
+    "boundary_focal_clip": 0.05,
+    "hard_negatives_per_positive": 20,
+    "minimum_hard_negatives": 16,
+    "hard_negative_keep_all_when_absent": true,
+    "enable_span_content": true,
+    "content_dim": 64,
+    "content_soft_max_pool": false,
+    "enable_rotary_endpoints": true,
+    "rotary_base": 10000.0,
+    "boundary_attention_layers": 2,
+    "boundary_attention_heads": 4,
+    "boundary_attention_window": 128,
+    "query_conditioned_inside_weight": true,
+    "endpoint_difference_features": true,
+    "reranker_endpoint_compat": true,
+    "multihead_pair_compat_heads": 8,
+    "boundary_top_k_alpha": 0.08,
+    "boundary_top_k_max": 128,
+    "boundary_top_k_bucket": 8,
+    "candidate_pool": "shared",
+    "pool_boundary_top_k": 32,
+    "pool_size": 192,
+    "min_pool_per_query": 8,
+    "candidate_attention_layers": 0,
+    "candidate_attention_heads": 4,
+    "query_attention_layers": 0,
+    "enable_abstention": true,
+    "abstention_threshold": 0.5,
+    "proposal_loss_weight": 0.3,
+    "consistency_loss_weight": 0.1,
+    "rerank_listwise_weight": 0.3,
+    "soft_iou_aux_weight": 0.2,
+    "soft_iou_anneal_steps": 20000,
+    "abstention_loss_weight": 0.2,
+    "consistency_warmup_steps": 2000,
+    "enable_count_head": true,
+    "count_loss_weight": 0.2,
+    "adaptive_threshold": false,
+    "overlap_policy": "flat",
+    "pair_temperature": 1.0,
+    "relation_temperature": 1.0,
+    "record_temperature": 1.0,
+    "classification_temperature": 1.0,
+    "negative_query_ratio": 1.0,
+    "max_negative_queries_per_batch": 64,
+    "classification_loss_weight": 1.0,
+    "enable_records": true,
+    "record_dim": 128,
+    "record_instance_queries": 32,
+    "record_anchor_proposal_threshold": 0.2,
+    "record_anchor_threshold": 0.5,
+    "record_field_threshold": 0.5,
+    "record_loss_weight": 1.0,
+    "enable_relations": true,
+    "relation_heads_per_type": 32,
+    "relation_tails_per_type": 32,
+    "relation_pair_cap": 64,
+    "relation_loss_weight": 1.0,
+    "relation_argument_proposal_threshold": 0.2,
+    "directional_relation_states": true,
+    "relation_biaffine_content": true
+  },
+  "config": {
+    "architecture": "boundary",
+    "architecture_version": 1,
+    "architectures": [
+      "BoundaryExtractor"
+    ],
+    "attn_implementation": "sdpa",
+    "boundary_head": {
+      "abstention_loss_weight": 0.2,
+      "abstention_threshold": 0.5,
+      "adaptive_threshold": false,
+      "bidirectional_proposals": true,
+      "boundary_attention_heads": 4,
+      "boundary_attention_layers": 2,
+      "boundary_attention_window": 128,
+      "boundary_dim": 128,
+      "boundary_ffn_multiplier": 2.0,
+      "boundary_focal_clip": 0.05,
+      "boundary_focal_gamma_negative": 2.0,
+      "boundary_focal_gamma_positive": 0.0,
+      "boundary_marginal_loss": "asymmetric_focal",
+      "boundary_negative_weight": 0.5,
+      "boundary_refinement_layers": 1,
+      "boundary_top_k_alpha": 0.08,
+      "boundary_top_k_bucket": 8,
+      "boundary_top_k_max": 128,
+      "candidate_attention_heads": 4,
+      "candidate_attention_layers": 0,
+      "candidate_budget": 192,
+      "candidate_pool": "shared",
+      "classification_loss_weight": 1.0,
+      "classification_temperature": 1.0,
+      "consistency_loss_weight": 0.1,
+      "consistency_warmup_steps": 2000,
+      "content_dim": 64,
+      "content_soft_max_pool": false,
+      "count_loss_weight": 0.2,
+      "directional_relation_states": true,
+      "dropout": 0.1,
+      "enable_abstention": true,
+      "enable_count_head": true,
+      "enable_records": true,
+      "enable_relations": true,
+      "enable_rotary_endpoints": true,
+      "enable_span_content": true,
+      "end_block_size": 256,
+      "end_top_k": 24,
+      "endpoint_difference_features": true,
+      "ends_per_start": 12,
+      "export_mode": "auto",
+      "hard_negative_keep_all_when_absent": true,
+      "hard_negatives_per_positive": 20,
+      "loss_reduction": "sum",
+      "max_gold_per_query": 64,
+      "max_negative_queries_per_batch": 64,
+      "min_pool_per_query": 8,
+      "minimum_hard_negatives": 16,
+      "multihead_pair_compat_heads": 8,
+      "negative_query_ratio": 1.0,
+      "overlap_policy": "flat",
+      "pair_dim": 128,
+      "pair_temperature": 1.0,
+      "pool_boundary_top_k": 32,
+      "pool_size": 192,
+      "proposal_loss_weight": 0.3,
+      "query_attention_layers": 0,
+      "query_conditioned_inside_weight": true,
+      "record_anchor_proposal_threshold": 0.2,
+      "record_anchor_threshold": 0.5,
+      "record_dim": 128,
+      "record_field_threshold": 0.5,
+      "record_instance_queries": 32,
+      "record_loss_weight": 1.0,
+      "record_temperature": 1.0,
+      "relation_argument_proposal_threshold": 0.2,
+      "relation_biaffine_content": true,
+      "relation_heads_per_type": 32,
+      "relation_loss_weight": 1.0,
+      "relation_pair_cap": 64,
+      "relation_tails_per_type": 32,
+      "relation_temperature": 1.0,
+      "rerank_listwise_weight": 0.3,
+      "reranker_endpoint_compat": true,
+      "rotary_base": 10000.0,
+      "soft_iou_anneal_steps": 20000,
+      "soft_iou_aux_weight": 0.2,
+      "start_top_k": 24,
+      "starts_per_end": 12,
+      "training_candidate_budget": 192,
+      "use_inside_evidence": true,
+      "vectorized_pair_elements": 16777216
+    },
+    "config_version": 3,
+    "max_len": 4096,
+    "model_name": "microsoft/deberta-v3-xsmall",
+    "model_type": "extractor",
+    "token_pooling": "first",
+    "transformers_version": "5.8.0"
+  },
+  "encoder_config": {
+    "attention_probs_dropout_prob": 0.1,
+    "bos_token_id": null,
+    "dtype": "float16",
+    "eos_token_id": null,
+    "hidden_act": "gelu",
+    "hidden_dropout_prob": 0.1,
+    "hidden_size": 384,
+    "initializer_range": 0.02,
+    "intermediate_size": 1536,
+    "layer_norm_eps": 1e-07,
+    "legacy": true,
+    "max_position_embeddings": 512,
+    "max_relative_positions": -1,
+    "model_type": "deberta-v2",
+    "norm_rel_ebd": "layer_norm",
+    "num_attention_heads": 6,
+    "num_hidden_layers": 12,
+    "pad_token_id": 0,
+    "pooler_dropout": 0.0,
+    "pooler_hidden_act": "gelu",
+    "pooler_hidden_size": 384,
+    "pos_att_type": [
+      "p2c",
+      "c2p"
+    ],
+    "position_biased_input": false,
+    "position_buckets": 256,
+    "relative_attention": true,
+    "share_att_key": true,
+    "tie_word_embeddings": true,
+    "transformers_version": "5.8.0",
+    "type_vocab_size": 0,
+    "vocab_size": 128011
+  },
+  "classification_logits": [],
+  "explicit_spans": {
+    "count": 16,
+    "note": "the pool's first min(16,P) valid spans (pool order) broadcast over Q, scored with model.score_explicit_spans(EncodedBatch from _encode_core, indices, valid_mask); logits are masked to -1e4 where explicit_mask is 0 or the span is illegal"
+  },
+  "runtime_explicit_calls": [],
+  "relations": [],
+  "tensors": {
+    "input_ids": [
+      1,
+      11
+    ],
+    "attention_mask": [
+      1,
+      11
+    ],
+    "text_word_indices": [
+      1,
+      2
+    ],
+    "text_word_mask": [
+      1,
+      2
+    ],
+    "query_marker_indices": [
+      1,
+      1
+    ],
+    "query_marker_mask": [
+      1,
+      1
+    ],
+    "query_group_index": [
+      1,
+      1
+    ],
+    "text_states": [
+      1,
+      2,
+      384
+    ],
+    "query_states": [
+      1,
+      1,
+      384
+    ],
+    "text_lengths": [
+      1
+    ],
+    "boundary_states": [
+      1,
+      3,
+      128
+    ],
+    "boundary_mask": [
+      1,
+      3
+    ],
+    "start_logits": [
+      1,
+      1,
+      3
+    ],
+    "end_logits": [
+      1,
+      1,
+      3
+    ],
+    "inside_logits": [
+      1,
+      1,
+      2
+    ],
+    "inside_prefix": [
+      1,
+      1,
+      3
+    ],
+    "inside_prefix_mean": [
+      1,
+      1,
+      1
+    ],
+    "pool_indices": [
+      1,
+      192,
+      2
+    ],
+    "pool_mask": [
+      1,
+      192
+    ],
+    "pool_proposal_logits": [
+      1,
+      192
+    ],
+    "pool_compat_logits": [
+      1,
+      192
+    ],
+    "scorer_score": [
+      1,
+      192,
+      1
+    ],
+    "scorer_candidate": [
+      1,
+      192,
+      128
+    ],
+    "pair_logits": [
+      1,
+      1,
+      192
+    ],
+    "null_logits": [
+      1,
+      1
+    ],
+    "count_log_rates": [
+      1,
+      1
+    ],
+    "candidate_states": [
+      1,
+      192,
+      384
+    ],
+    "probs": [
+      1,
+      1,
+      192
+    ],
+    "explicit_indices": [
+      1,
+      1,
+      16,
+      2
+    ],
+    "explicit_mask": [
+      1,
+      1,
+      16
+    ],
+    "explicit_logits": [
+      1,
+      1,
+      16
+    ]
+  },
+  "tensor_dtypes": {
+    "input_ids": "int32",
+    "attention_mask": "int32",
+    "text_word_indices": "int32",
+    "text_word_mask": "uint8",
+    "query_marker_indices": "int32",
+    "query_marker_mask": "uint8",
+    "query_group_index": "int32",
+    "text_states": "float32",
+    "query_states": "float32",
+    "text_lengths": "int32",
+    "boundary_states": "float32",
+    "boundary_mask": "uint8",
+    "start_logits": "float32",
+    "end_logits": "float32",
+    "inside_logits": "float32",
+    "inside_prefix": "float32",
+    "inside_prefix_mean": "float32",
+    "pool_indices": "int32",
+    "pool_mask": "uint8",
+    "pool_proposal_logits": "float32",
+    "pool_compat_logits": "float32",
+    "scorer_score": "float32",
+    "scorer_candidate": "float32",
+    "pair_logits": "float32",
+    "null_logits": "float32",
+    "count_log_rates": "float32",
+    "candidate_states": "float32",
+    "probs": "float32",
+    "explicit_indices": "int32",
+    "explicit_mask": "uint8",
+    "explicit_logits": "float32"
+  },
+  "tensor_notes": {
+    "text_states": "_encode_core: last_hidden_state gathered at text_word_indices, zeroed by text_word_mask",
+    "query_states": "_encode_core: last_hidden_state gathered at query_marker_indices, zeroed by query_marker_mask",
+    "pool_indices": "DocumentCandidatePool output [B,P,2] (start,end) half-open word boundaries; (0,0) where pool_mask is 0",
+    "scorer_score": "SharedPoolScorer score [B,P,Q] (candidate-major); pair_logits = transpose(1,2)",
+    "candidate_states": "candidate_encoder output masked to 0 where pool_mask is 0, stored as [B,P,H]; the runtime's CandidateTensorBatch.candidate_states is this expanded to [B,Q,P,H]",
+    "probs": "sigmoid(pair_logits / pair_temperature=1.0)"
+  },
+  "omitted_tensors": [],
+  "skipped_empty_tensors": [
+    {
+      "name": "cls_marker_indices",
+      "shape": [
+        1,
+        0
+      ]
+    },
+    {
+      "name": "cls_marker_mask",
+      "shape": [
+        1,
+        0
+      ]
+    },
+    {
+      "name": "cls_group_index",
+      "shape": [
+        1,
+        0
+      ]
+    }
+  ],
+  "hook_call_counts": {
+    "_encode_core": 1,
+    "boundary_encoder": 1,
+    "boundary_query_head": 1,
+    "shared_pool_builder": 1,
+    "shared_pool_scorer": 1,
+    "boundary_head": 1
+  },
+  "expected_raw": [
+    {
+      "entities": [
+        {
+          "city": [
+            {
+              "text": "Paris",
+              "confidence": 0.9961320161819458,
+              "start": 0,
+              "end": 5
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "expected_formatted": [
+    {
+      "entities": {
+        "city": [
+          {
+            "text": "Paris",
+            "confidence": 0.9961320161819458,
+            "start": 0,
+            "end": 5
+          }
+        ]
+      }
+    }
+  ],
+  "expected_plain": [
+    {
+      "entities": {
+        "city": [
+          "Paris"
+        ]
+      }
+    }
+  ]
+}

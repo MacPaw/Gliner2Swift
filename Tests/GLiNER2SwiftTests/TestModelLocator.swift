@@ -218,3 +218,47 @@ enum TestModel {
         return sawFloat
     }
 }
+
+// MARK: - GLiNER2.5 (boundary) checkpoints
+
+extension TestModel {
+    /// Raw fp32 `fastino/gliner2.5-<size>-v1` snapshot (size: "small", "base", "multi").
+    ///
+    /// Resolution order: `GLINER25_MODEL_PATH_<SIZE>`, then the HuggingFace hub cache.
+    static func boundaryModelPath(_ size: String) -> String? {
+        if let env = ProcessInfo.processInfo.environment["GLINER25_MODEL_PATH_\(size.uppercased())"] {
+            return env
+        }
+        let fm = FileManager.default
+        let snapshots = fm.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cache/huggingface/hub")
+            .appendingPathComponent("models--fastino--gliner2.5-\(size)-v1")
+            .appendingPathComponent("snapshots")
+        guard let entries = try? fm.contentsOfDirectory(at: snapshots, includingPropertiesForKeys: nil) else {
+            return nil
+        }
+        for snapshot in entries.sorted(by: { $0.path < $1.path })
+        where fm.fileExists(atPath: snapshot.appendingPathComponent("model.safetensors").path) {
+            return snapshot.path
+        }
+        return nil
+    }
+
+    /// Returns the raw GLiNER2.5 snapshot directory for `size`, or skips the test.
+    static func requireBoundaryModel(_ size: String) throws -> String {
+        guard let path = boundaryModelPath(size) else {
+            throw XCTSkip("""
+                fastino/gliner2.5-\(size)-v1 not found. Set GLINER25_MODEL_PATH_\(size.uppercased()) \
+                or download it into the HuggingFace cache.
+                """)
+        }
+        return path
+    }
+
+    /// `Tests/GLiNER2SwiftTests/Fixtures/boundary/<size>`.
+    static func boundaryFixturesDirectory(_ size: String) -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/boundary/\(size)")
+    }
+}

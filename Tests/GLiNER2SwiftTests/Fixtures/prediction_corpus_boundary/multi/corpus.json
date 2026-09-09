@@ -1,0 +1,4227 @@
+{
+  "model": "fastino/gliner2.5-multi-v1",
+  "architecture": "boundary",
+  "generator": "scripts/generate_prediction_corpus.py",
+  "note": "Python ground truth. Swift must reproduce `expected` exactly for text/start/end/label; confidences within the tier-C tolerance. Boundary (GLiNER 2.5) runtime: structures without a `mode` use the legacy (non-record) decoder; `records_*` cases exercise the record head; overlap policy 'flat', abstention gate.",
+  "cases": [
+    {
+      "name": "ner_basic",
+      "text": "Tim Cook is the CEO of Apple.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "person",
+          "company"
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Tim Cook",
+              "confidence": 0.9988515377044678,
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "company": [
+            {
+              "text": "Apple",
+              "confidence": 0.996059775352478,
+              "start": 23,
+              "end": 28
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9988515377044678,
+          "margin": 0.4988515377044678
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.996059775352478,
+          "margin": 0.496059775352478
+        }
+      ]
+    },
+    {
+      "name": "ner_many_labels",
+      "text": "Dr. Jane Smith met Barack Obama in Berlin on Tuesday to discuss Tesla and Google.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location",
+          "date",
+          "title",
+          "organization",
+          "product",
+          "event"
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Barack Obama",
+              "confidence": 0.9981671571731567,
+              "start": 19,
+              "end": 31
+            },
+            {
+              "text": "Jane Smith",
+              "confidence": 0.9113751649856567,
+              "start": 4,
+              "end": 14
+            }
+          ],
+          "company": [
+            {
+              "text": "Google",
+              "confidence": 0.987851619720459,
+              "start": 74,
+              "end": 80
+            },
+            {
+              "text": "Tesla",
+              "confidence": 0.9871065616607666,
+              "start": 64,
+              "end": 69
+            }
+          ],
+          "location": [
+            {
+              "text": "Berlin",
+              "confidence": 0.9995206594467163,
+              "start": 35,
+              "end": 41
+            }
+          ],
+          "date": [
+            {
+              "text": "Tuesday",
+              "confidence": 0.9951537847518921,
+              "start": 45,
+              "end": 52
+            }
+          ],
+          "title": [],
+          "organization": [],
+          "product": [],
+          "event": []
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9981671571731567,
+          "margin": 0.49816715717315674
+        },
+        {
+          "path": "entities.person[1]",
+          "confidence": 0.9113751649856567,
+          "margin": 0.41137516498565674
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.987851619720459,
+          "margin": 0.487851619720459
+        },
+        {
+          "path": "entities.company[1]",
+          "confidence": 0.9871065616607666,
+          "margin": 0.4871065616607666
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9995206594467163,
+          "margin": 0.4995206594467163
+        },
+        {
+          "path": "entities.date[0]",
+          "confidence": 0.9951537847518921,
+          "margin": 0.4951537847518921
+        }
+      ]
+    },
+    {
+      "name": "ner_no_match",
+      "text": "The weather is quite pleasant today.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "person",
+          "company"
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "person": [],
+          "company": []
+        }
+      },
+      "margins": []
+    },
+    {
+      "name": "ner_repeated_mention",
+      "text": "Apple released a phone. Apple also released a laptop. Apple is busy.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "company"
+        ]
+      },
+      "tags": [
+        "dedup"
+      ],
+      "expected": {
+        "entities": {
+          "company": [
+            {
+              "text": "Apple",
+              "confidence": 0.9986428618431091,
+              "start": 0,
+              "end": 5
+            },
+            {
+              "text": "Apple",
+              "confidence": 0.9985888600349426,
+              "start": 24,
+              "end": 29
+            },
+            {
+              "text": "Apple",
+              "confidence": 0.9982402324676514,
+              "start": 54,
+              "end": 59
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.9986428618431091,
+          "margin": 0.49864286184310913
+        },
+        {
+          "path": "entities.company[1]",
+          "confidence": 0.9985888600349426,
+          "margin": 0.4985888600349426
+        },
+        {
+          "path": "entities.company[2]",
+          "confidence": 0.9982402324676514,
+          "margin": 0.49824023246765137
+        }
+      ]
+    },
+    {
+      "name": "ner_threshold_030",
+      "text": "Tim Cook is the CEO of Apple.",
+      "threshold": 0.3,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location"
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Tim Cook",
+              "confidence": 0.9988415837287903,
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "company": [
+            {
+              "text": "Apple",
+              "confidence": 0.9935718774795532,
+              "start": 23,
+              "end": 28
+            }
+          ],
+          "location": []
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9988415837287903,
+          "margin": 0.6988415837287902
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.9935718774795532,
+          "margin": 0.6935718774795532
+        }
+      ]
+    },
+    {
+      "name": "ner_threshold_070",
+      "text": "Tim Cook is the CEO of Apple.",
+      "threshold": 0.7,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location"
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Tim Cook",
+              "confidence": 0.9988415837287903,
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "company": [
+            {
+              "text": "Apple",
+              "confidence": 0.9935718774795532,
+              "start": 23,
+              "end": 28
+            }
+          ],
+          "location": []
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9988415837287903,
+          "margin": 0.2988415837287903
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.9935718774795532,
+          "margin": 0.29357187747955327
+        }
+      ]
+    },
+    {
+      "name": "ner_descriptions_unordered",
+      "text": "Tim Cook visited Berlin with Satya Nadella.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": {
+          "person": "a human being",
+          "company": "a business organisation",
+          "location": "a geographic place"
+        },
+        "entity_order": [
+          "person",
+          "company",
+          "location"
+        ]
+      },
+      "tags": [
+        "entity_order"
+      ],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Tim Cook",
+              "confidence": 0.9956028461456299,
+              "start": 0,
+              "end": 8
+            },
+            {
+              "text": "Satya Nadella",
+              "confidence": 0.987852931022644,
+              "start": 29,
+              "end": 42
+            }
+          ],
+          "company": [],
+          "location": [
+            {
+              "text": "Berlin",
+              "confidence": 0.9989182949066162,
+              "start": 17,
+              "end": 23
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9956028461456299,
+          "margin": 0.4956028461456299
+        },
+        {
+          "path": "entities.person[1]",
+          "confidence": 0.987852931022644,
+          "margin": 0.48785293102264404
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9989182949066162,
+          "margin": 0.4989182949066162
+        }
+      ]
+    },
+    {
+      "name": "ner_long_text",
+      "text": "The quarterly review meeting was held in San Francisco on March 15, where Tim Cook and Satya Nadella discussed a joint venture between Apple and Microsoft. The quarterly review meeting was held in San Francisco on March 15, where Tim Cook and Satya Nadella discussed a joint venture between Apple and Microsoft. The quarterly review meeting was held in San Francisco on March 15, where Tim Cook and Satya Nadella discussed a joint venture between Apple and Microsoft. The quarterly review meeting was held in San Francisco on March 15, where Tim Cook and Satya Nadella discussed a joint venture between Apple and Microsoft. The quarterly review meeting was held in San Francisco on March 15, where Tim Cook and Satya Nadella discussed a joint venture between Apple and Microsoft. The quarterly review meeting was held in San Francisco on March 15, where Tim Cook and Satya Nadella discussed a joint venture between Apple and Microsoft. The quarterly review meeting was held in San Francisco on March 15, where Tim Cook and Satya Nadella discussed a joint venture between Apple and Microsoft. The quarterly review meeting was held in San Francisco on March 15, where Tim Cook and Satya Nadella discussed a joint venture between Apple and Microsoft. The quarterly review meeting was held in San Francisco on March 15, where Tim Cook and Satya Nadella discussed a joint venture between Apple and Microsoft. The quarterly review meeting was held in San Francisco on March 15, where Tim Cook and Satya Nadella discussed a joint venture between Apple and Microsoft. The quarterly review meeting was held in San Francisco on March 15, where Tim Cook and Satya Nadella discussed a joint venture between Apple and Microsoft. The quarterly review meeting was held in San Francisco on March 15, where Tim Cook and Satya Nadella discussed a joint venture between Apple and Microsoft. ",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location"
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "person": [],
+          "company": [
+            {
+              "text": "Apple",
+              "confidence": 0.999700665473938,
+              "start": 1695,
+              "end": 1700
+            },
+            {
+              "text": "Apple",
+              "confidence": 0.9996984004974365,
+              "start": 1383,
+              "end": 1388
+            },
+            {
+              "text": "Apple",
+              "confidence": 0.9996886253356934,
+              "start": 1071,
+              "end": 1076
+            },
+            {
+              "text": "Apple",
+              "confidence": 0.9996885061264038,
+              "start": 1539,
+              "end": 1544
+            },
+            {
+              "text": "Apple",
+              "confidence": 0.9996770620346069,
+              "start": 1227,
+              "end": 1232
+            },
+            {
+              "text": "Apple",
+              "confidence": 0.9996392726898193,
+              "start": 915,
+              "end": 920
+            },
+            {
+              "text": "Apple",
+              "confidence": 0.9996045231819153,
+              "start": 759,
+              "end": 764
+            },
+            {
+              "text": "Apple",
+              "confidence": 0.9996042847633362,
+              "start": 603,
+              "end": 608
+            },
+            {
+              "text": "Apple",
+              "confidence": 0.9995821118354797,
+              "start": 447,
+              "end": 452
+            },
+            {
+              "text": "Apple",
+              "confidence": 0.9995613694190979,
+              "start": 291,
+              "end": 296
+            },
+            {
+              "text": "Apple",
+              "confidence": 0.9994532465934753,
+              "start": 135,
+              "end": 140
+            },
+            {
+              "text": "Microsoft",
+              "confidence": 0.998935878276825,
+              "start": 301,
+              "end": 310
+            },
+            {
+              "text": "Microsoft",
+              "confidence": 0.9988480806350708,
+              "start": 145,
+              "end": 154
+            }
+          ],
+          "location": [
+            {
+              "text": "San Francisco",
+              "confidence": 0.9996652603149414,
+              "start": 197,
+              "end": 210
+            },
+            {
+              "text": "San Francisco",
+              "confidence": 0.9995961785316467,
+              "start": 353,
+              "end": 366
+            },
+            {
+              "text": "San Francisco",
+              "confidence": 0.9995777010917664,
+              "start": 509,
+              "end": 522
+            },
+            {
+              "text": "San Francisco",
+              "confidence": 0.9995162487030029,
+              "start": 665,
+              "end": 678
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.999700665473938,
+          "margin": 0.499700665473938
+        },
+        {
+          "path": "entities.company[1]",
+          "confidence": 0.9996984004974365,
+          "margin": 0.4996984004974365
+        },
+        {
+          "path": "entities.company[2]",
+          "confidence": 0.9996886253356934,
+          "margin": 0.49968862533569336
+        },
+        {
+          "path": "entities.company[3]",
+          "confidence": 0.9996885061264038,
+          "margin": 0.4996885061264038
+        },
+        {
+          "path": "entities.company[4]",
+          "confidence": 0.9996770620346069,
+          "margin": 0.49967706203460693
+        },
+        {
+          "path": "entities.company[5]",
+          "confidence": 0.9996392726898193,
+          "margin": 0.49963927268981934
+        },
+        {
+          "path": "entities.company[6]",
+          "confidence": 0.9996045231819153,
+          "margin": 0.4996045231819153
+        },
+        {
+          "path": "entities.company[7]",
+          "confidence": 0.9996042847633362,
+          "margin": 0.4996042847633362
+        },
+        {
+          "path": "entities.company[8]",
+          "confidence": 0.9995821118354797,
+          "margin": 0.49958211183547974
+        },
+        {
+          "path": "entities.company[9]",
+          "confidence": 0.9995613694190979,
+          "margin": 0.4995613694190979
+        },
+        {
+          "path": "entities.company[10]",
+          "confidence": 0.9994532465934753,
+          "margin": 0.49945324659347534
+        },
+        {
+          "path": "entities.company[11]",
+          "confidence": 0.998935878276825,
+          "margin": 0.49893587827682495
+        },
+        {
+          "path": "entities.company[12]",
+          "confidence": 0.9988480806350708,
+          "margin": 0.4988480806350708
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9996652603149414,
+          "margin": 0.4996652603149414
+        },
+        {
+          "path": "entities.location[1]",
+          "confidence": 0.9995961785316467,
+          "margin": 0.49959617853164673
+        },
+        {
+          "path": "entities.location[2]",
+          "confidence": 0.9995777010917664,
+          "margin": 0.49957770109176636
+        },
+        {
+          "path": "entities.location[3]",
+          "confidence": 0.9995162487030029,
+          "margin": 0.49951624870300293
+        }
+      ]
+    },
+    {
+      "name": "ner_empty_text",
+      "text": "",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "person"
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "person": []
+        }
+      },
+      "margins": []
+    },
+    {
+      "name": "ner_punctuation_only",
+      "text": "!!! ???",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "person"
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "person": []
+        }
+      },
+      "margins": []
+    },
+    {
+      "name": "nonascii_nfd_accents",
+      "text": "Zoé Dupont works at Café René in Montréal.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location"
+        ]
+      },
+      "tags": [
+        "non_ascii"
+      ],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Zoé Dupont",
+              "confidence": 0.9968830347061157,
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "company": [
+            {
+              "text": "Café René",
+              "confidence": 0.9947280287742615,
+              "start": 21,
+              "end": 32
+            }
+          ],
+          "location": [
+            {
+              "text": "Montréal",
+              "confidence": 0.9983508586883545,
+              "start": 36,
+              "end": 45
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9968830347061157,
+          "margin": 0.4968830347061157
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.9947280287742615,
+          "margin": 0.4947280287742615
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9983508586883545,
+          "margin": 0.4983508586883545
+        }
+      ]
+    },
+    {
+      "name": "nonascii_precomposed",
+      "text": "Zoé Dupont works at Café René in Montréal.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location"
+        ]
+      },
+      "tags": [
+        "non_ascii"
+      ],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Zoé Dupont",
+              "confidence": 0.9945835471153259,
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "company": [
+            {
+              "text": "Café René",
+              "confidence": 0.9873900413513184,
+              "start": 20,
+              "end": 29
+            }
+          ],
+          "location": [
+            {
+              "text": "Montréal",
+              "confidence": 0.9987326264381409,
+              "start": 33,
+              "end": 41
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9945835471153259,
+          "margin": 0.4945835471153259
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.9873900413513184,
+          "margin": 0.48739004135131836
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9987326264381409,
+          "margin": 0.49873262643814087
+        }
+      ]
+    },
+    {
+      "name": "nonascii_ligature",
+      "text": "The oﬃce of Grifﬁn Ltd is in Shefﬁeld.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "company",
+          "location"
+        ]
+      },
+      "tags": [
+        "non_ascii"
+      ],
+      "expected": {
+        "entities": {
+          "company": [
+            {
+              "text": "Grifﬁn Ltd",
+              "confidence": 0.995203971862793,
+              "start": 12,
+              "end": 22
+            }
+          ],
+          "location": [
+            {
+              "text": "Shefﬁeld",
+              "confidence": 0.9986139535903931,
+              "start": 29,
+              "end": 37
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.995203971862793,
+          "margin": 0.49520397186279297
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9986139535903931,
+          "margin": 0.49861395359039307
+        }
+      ]
+    },
+    {
+      "name": "nonascii_fullwidth",
+      "text": "ＡＢＣ Corp hired Ｊｏｈｎ Ｓｍｉｔｈ in Ｔｏｋｙｏ.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location"
+        ]
+      },
+      "tags": [
+        "non_ascii"
+      ],
+      "expected": {
+        "entities": {
+          "person": [],
+          "company": [
+            {
+              "text": "Corp",
+              "confidence": 0.8472659587860107,
+              "start": 4,
+              "end": 8
+            }
+          ],
+          "location": []
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.8472659587860107,
+          "margin": 0.34726595878601074
+        }
+      ]
+    },
+    {
+      "name": "nonascii_micro_sign",
+      "text": "The µm sensor from Micron measures 5 μm precisely.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "company",
+          "product"
+        ]
+      },
+      "tags": [
+        "non_ascii"
+      ],
+      "expected": {
+        "entities": {
+          "company": [],
+          "product": [
+            {
+              "text": "µm sensor",
+              "confidence": 0.9554064273834229,
+              "start": 4,
+              "end": 13
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.product[0]",
+          "confidence": 0.9554064273834229,
+          "margin": 0.45540642738342285
+        }
+      ]
+    },
+    {
+      "name": "nonascii_cjk",
+      "text": "田中太郎は東京のソニーで働いています。",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location"
+        ]
+      },
+      "tags": [
+        "non_ascii"
+      ],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "田中太郎は東京のソニーで働いています",
+              "confidence": 0.9194042682647705,
+              "start": 0,
+              "end": 18
+            }
+          ],
+          "company": [],
+          "location": []
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9194042682647705,
+          "margin": 0.4194042682647705
+        }
+      ]
+    },
+    {
+      "name": "nonascii_nbsp_zwsp",
+      "text": "Tim Cook joined Apple​Inc in Cupertino.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location"
+        ]
+      },
+      "tags": [
+        "non_ascii"
+      ],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Tim Cook",
+              "confidence": 0.9980921149253845,
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "company": [
+            {
+              "text": "Apple​Inc",
+              "confidence": 0.9951395988464355,
+              "start": 16,
+              "end": 25
+            }
+          ],
+          "location": [
+            {
+              "text": "Cupertino",
+              "confidence": 0.9987673759460449,
+              "start": 29,
+              "end": 38
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9980921149253845,
+          "margin": 0.4980921149253845
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.9951395988464355,
+          "margin": 0.49513959884643555
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9987673759460449,
+          "margin": 0.4987673759460449
+        }
+      ]
+    },
+    {
+      "name": "nonascii_cyrillic",
+      "text": "Иван Петров работает в Яндекс в Москве.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location"
+        ]
+      },
+      "tags": [
+        "non_ascii"
+      ],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Иван Петров",
+              "confidence": 0.9966481328010559,
+              "start": 0,
+              "end": 11
+            }
+          ],
+          "company": [
+            {
+              "text": "Яндекс",
+              "confidence": 0.9855601191520691,
+              "start": 23,
+              "end": 29
+            }
+          ],
+          "location": [
+            {
+              "text": "Москве",
+              "confidence": 0.9982185959815979,
+              "start": 32,
+              "end": 38
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9966481328010559,
+          "margin": 0.4966481328010559
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.9855601191520691,
+          "margin": 0.4855601191520691
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9982185959815979,
+          "margin": 0.4982185959815979
+        }
+      ]
+    },
+    {
+      "name": "cls_single_positive",
+      "text": "I love this product! It's amazing.",
+      "threshold": 0.5,
+      "schema": {
+        "classification": {
+          "task": "sentiment",
+          "labels": [
+            "positive",
+            "negative"
+          ]
+        }
+      },
+      "tags": [],
+      "expected": {
+        "sentiment": {
+          "label": "positive",
+          "confidence": 0.9999998807907104
+        }
+      },
+      "margins": [
+        {
+          "path": "sentiment",
+          "confidence": 0.9999998807907104,
+          "margin": 0.49999988079071045
+        }
+      ]
+    },
+    {
+      "name": "cls_single_negative",
+      "text": "This is terrible and broke immediately.",
+      "threshold": 0.5,
+      "schema": {
+        "classification": {
+          "task": "sentiment",
+          "labels": [
+            "positive",
+            "negative",
+            "neutral"
+          ]
+        }
+      },
+      "tags": [],
+      "expected": {
+        "sentiment": {
+          "label": "negative",
+          "confidence": 0.9999986886978149
+        }
+      },
+      "margins": [
+        {
+          "path": "sentiment",
+          "confidence": 0.9999986886978149,
+          "margin": 0.49999868869781494
+        }
+      ]
+    },
+    {
+      "name": "cls_multi_label",
+      "text": "The team scored a goal while the new phone launched at the tech expo.",
+      "threshold": 0.5,
+      "schema": {
+        "classification": {
+          "task": "topic",
+          "labels": [
+            "sports",
+            "technology",
+            "politics",
+            "food"
+          ],
+          "multi_label": true
+        }
+      },
+      "tags": [],
+      "expected": {
+        "topic": [
+          {
+            "label": "sports",
+            "confidence": 0.5765951871871948
+          },
+          {
+            "label": "technology",
+            "confidence": 0.9264628887176514
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "topic[0]",
+          "confidence": 0.5765951871871948,
+          "margin": 0.07659518718719482
+        },
+        {
+          "path": "topic[1]",
+          "confidence": 0.9264628887176514,
+          "margin": 0.42646288871765137
+        }
+      ]
+    },
+    {
+      "name": "cls_multi_all_below",
+      "text": "asdf qwer zxcv.",
+      "threshold": 0.5,
+      "schema": {
+        "classification": {
+          "task": "topic",
+          "labels": [
+            "sports",
+            "technology",
+            "politics"
+          ],
+          "multi_label": true,
+          "cls_threshold": 0.99
+        }
+      },
+      "tags": [],
+      "expected": {
+        "topic": [
+          {
+            "label": "technology",
+            "confidence": 0.9471607804298401
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "topic[0]",
+          "confidence": 0.9471607804298401,
+          "margin": 0.4471607804298401
+        }
+      ]
+    },
+    {
+      "name": "cls_ambiguous",
+      "text": "It was fine, I guess. Not great, not awful.",
+      "threshold": 0.5,
+      "schema": {
+        "classification": {
+          "task": "sentiment",
+          "labels": [
+            "positive",
+            "negative",
+            "neutral"
+          ]
+        }
+      },
+      "tags": [],
+      "expected": {
+        "sentiment": {
+          "label": "negative",
+          "confidence": 0.9527511596679688
+        }
+      },
+      "margins": [
+        {
+          "path": "sentiment",
+          "confidence": 0.9527511596679688,
+          "margin": 0.45275115966796875
+        }
+      ]
+    },
+    {
+      "name": "cls_custom_threshold",
+      "text": "Absolutely fantastic experience.",
+      "threshold": 0.5,
+      "schema": {
+        "classification": {
+          "task": "sentiment",
+          "labels": [
+            "positive",
+            "negative"
+          ],
+          "cls_threshold": 0.9
+        }
+      },
+      "tags": [],
+      "expected": {
+        "sentiment": {
+          "label": "positive",
+          "confidence": 1.0
+        }
+      },
+      "margins": [
+        {
+          "path": "sentiment",
+          "confidence": 1.0,
+          "margin": 0.5
+        }
+      ]
+    },
+    {
+      "name": "struct_contact",
+      "text": "Contact john@email.com or call 555-1234.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "contact",
+            "fields": [
+              {
+                "name": "email"
+              },
+              {
+                "name": "phone"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "contact": [
+          {
+            "email": [
+              {
+                "text": "john@email.com",
+                "confidence": 0.993224561214447,
+                "start": 8,
+                "end": 22
+              }
+            ],
+            "phone": [
+              {
+                "text": "555-1234",
+                "confidence": 0.990965723991394,
+                "start": 31,
+                "end": 39
+              }
+            ]
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "contact[0].email[0]",
+          "confidence": 0.993224561214447,
+          "margin": 0.493224561214447
+        },
+        {
+          "path": "contact[0].phone[0]",
+          "confidence": 0.990965723991394,
+          "margin": 0.49096572399139404
+        }
+      ]
+    },
+    {
+      "name": "struct_dtype_str",
+      "text": "Contact john@email.com or call 555-1234.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "contact",
+            "fields": [
+              {
+                "name": "email",
+                "dtype": "str"
+              },
+              {
+                "name": "phone",
+                "dtype": "str"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "field_dtype"
+      ],
+      "expected": {
+        "contact": [
+          {
+            "email": {
+              "text": "john@email.com",
+              "confidence": 0.993224561214447,
+              "start": 8,
+              "end": 22
+            },
+            "phone": {
+              "text": "555-1234",
+              "confidence": 0.990965723991394,
+              "start": 31,
+              "end": 39
+            }
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "contact[0].email",
+          "confidence": 0.993224561214447,
+          "margin": 0.493224561214447
+        },
+        {
+          "path": "contact[0].phone",
+          "confidence": 0.990965723991394,
+          "margin": 0.49096572399139404
+        }
+      ]
+    },
+    {
+      "name": "struct_dtype_str_first_not_max",
+      "text": "Alice met Bob and then Carol and afterwards Dave joined them.",
+      "threshold": 0.3,
+      "schema": {
+        "structures": [
+          {
+            "name": "meeting",
+            "fields": [
+              {
+                "name": "person",
+                "dtype": "str"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "field_dtype"
+      ],
+      "expected": {
+        "meeting": [
+          {
+            "person": {
+              "text": "Dave",
+              "confidence": 0.993128776550293,
+              "start": 44,
+              "end": 48
+            }
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "meeting[0].person",
+          "confidence": 0.993128776550293,
+          "margin": 0.6931287765502929
+        }
+      ]
+    },
+    {
+      "name": "struct_multi_instance",
+      "text": "Alice Johnson works at Acme Corp. Bob Smith works at Globex. Carol White works at Initech.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "employment",
+            "fields": [
+              {
+                "name": "employee"
+              },
+              {
+                "name": "employer"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "employment": [
+          {
+            "employee": [
+              {
+                "text": "Alice Johnson",
+                "confidence": 0.9927137494087219,
+                "start": 0,
+                "end": 13
+              },
+              {
+                "text": "Bob Smith",
+                "confidence": 0.9906039834022522,
+                "start": 34,
+                "end": 43
+              },
+              {
+                "text": "Carol White",
+                "confidence": 0.9898331165313721,
+                "start": 61,
+                "end": 72
+              }
+            ],
+            "employer": [
+              {
+                "text": "Acme Corp",
+                "confidence": 0.9926583170890808,
+                "start": 23,
+                "end": 32
+              },
+              {
+                "text": "Globex",
+                "confidence": 0.988295316696167,
+                "start": 53,
+                "end": 59
+              },
+              {
+                "text": "Initech",
+                "confidence": 0.9881939888000488,
+                "start": 82,
+                "end": 89
+              }
+            ]
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "employment[0].employee[0]",
+          "confidence": 0.9927137494087219,
+          "margin": 0.4927137494087219
+        },
+        {
+          "path": "employment[0].employee[1]",
+          "confidence": 0.9906039834022522,
+          "margin": 0.4906039834022522
+        },
+        {
+          "path": "employment[0].employee[2]",
+          "confidence": 0.9898331165313721,
+          "margin": 0.48983311653137207
+        },
+        {
+          "path": "employment[0].employer[0]",
+          "confidence": 0.9926583170890808,
+          "margin": 0.4926583170890808
+        },
+        {
+          "path": "employment[0].employer[1]",
+          "confidence": 0.988295316696167,
+          "margin": 0.488295316696167
+        },
+        {
+          "path": "employment[0].employer[2]",
+          "confidence": 0.9881939888000488,
+          "margin": 0.48819398880004883
+        }
+      ]
+    },
+    {
+      "name": "struct_descriptions",
+      "text": "The summit runs March 15 in Berlin.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "event",
+            "fields": [
+              {
+                "name": "date",
+                "description": "when it happens"
+              },
+              {
+                "name": "place",
+                "description": "where it happens"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "event": [
+          {
+            "date": [
+              {
+                "text": "March 15",
+                "confidence": 0.9971833825111389,
+                "start": 16,
+                "end": 24
+              }
+            ],
+            "place": [
+              {
+                "text": "Berlin",
+                "confidence": 0.9994519352912903,
+                "start": 28,
+                "end": 34
+              }
+            ]
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "event[0].date[0]",
+          "confidence": 0.9971833825111389,
+          "margin": 0.4971833825111389
+        },
+        {
+          "path": "event[0].place[0]",
+          "confidence": 0.9994519352912903,
+          "margin": 0.4994519352912903
+        }
+      ]
+    },
+    {
+      "name": "struct_field_threshold",
+      "text": "Contact john@email.com or call 555-1234.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "contact",
+            "fields": [
+              {
+                "name": "email",
+                "threshold": 0.9
+              },
+              {
+                "name": "phone",
+                "threshold": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "field_threshold"
+      ],
+      "expected": {
+        "contact": [
+          {
+            "email": [
+              {
+                "text": "john@email.com",
+                "confidence": 0.993224561214447,
+                "start": 8,
+                "end": 22
+              }
+            ],
+            "phone": [
+              {
+                "text": "555-1234",
+                "confidence": 0.990965723991394,
+                "start": 31,
+                "end": 39
+              }
+            ]
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "contact[0].email[0]",
+          "confidence": 0.993224561214447,
+          "margin": 0.493224561214447
+        },
+        {
+          "path": "contact[0].phone[0]",
+          "confidence": 0.990965723991394,
+          "margin": 0.49096572399139404
+        }
+      ]
+    },
+    {
+      "name": "struct_all_below_threshold",
+      "text": "Nothing relevant appears in this sentence at all.",
+      "threshold": 0.99,
+      "schema": {
+        "structures": [
+          {
+            "name": "contact",
+            "fields": [
+              {
+                "name": "email"
+              },
+              {
+                "name": "phone"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [],
+      "expected": {},
+      "margins": []
+    },
+    {
+      "name": "choices_basic",
+      "text": "The laptop arrived damaged and I want a refund.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "ticket",
+            "fields": [
+              {
+                "name": "item"
+              },
+              {
+                "name": "issue",
+                "dtype": "str",
+                "choices": [
+                  "damaged",
+                  "missing",
+                  "late"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "choices"
+      ],
+      "expected": {
+        "ticket": [
+          {
+            "item": [
+              {
+                "text": "laptop",
+                "confidence": 0.995413601398468,
+                "start": 4,
+                "end": 10
+              }
+            ],
+            "issue": {
+              "text": "damaged",
+              "confidence": 0.9999821186065674
+            }
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "ticket[0].item[0]",
+          "confidence": 0.995413601398468,
+          "margin": 0.495413601398468
+        },
+        {
+          "path": "ticket[0].issue",
+          "confidence": 0.9999821186065674,
+          "margin": 0.4999821186065674
+        }
+      ]
+    },
+    {
+      "name": "choices_list_dtype",
+      "text": "The laptop arrived damaged and late.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "ticket",
+            "fields": [
+              {
+                "name": "issue",
+                "dtype": "list",
+                "choices": [
+                  "damaged",
+                  "missing",
+                  "late"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "choices"
+      ],
+      "expected": {
+        "ticket": [
+          {
+            "issue": [
+              {
+                "text": "damaged",
+                "confidence": 0.9999121427536011
+              }
+            ]
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "ticket[0].issue[0]",
+          "confidence": 0.9999121427536011,
+          "margin": 0.4999121427536011
+        }
+      ]
+    },
+    {
+      "name": "choices_overlapping_labels",
+      "text": "This product is absolutely wonderful in every way.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "review",
+            "fields": [
+              {
+                "name": "rating",
+                "dtype": "str",
+                "choices": [
+                  "very positive",
+                  "positive",
+                  "negative"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "choices"
+      ],
+      "expected": {
+        "review": [
+          {
+            "rating": {
+              "text": "positive",
+              "confidence": 0.992466151714325
+            }
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "review[0].rating",
+          "confidence": 0.992466151714325,
+          "margin": 0.49246615171432495
+        }
+      ]
+    },
+    {
+      "name": "choices_multiword",
+      "text": "Please ship it with next day air to the Berlin office.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "order",
+            "fields": [
+              {
+                "name": "shipping",
+                "dtype": "str",
+                "choices": [
+                  "next day air",
+                  "ground",
+                  "two day"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "choices"
+      ],
+      "expected": {
+        "order": [
+          {
+            "shipping": {
+              "text": "next day air",
+              "confidence": 0.9997952580451965
+            }
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "order[0].shipping",
+          "confidence": 0.9997952580451965,
+          "margin": 0.49979525804519653
+        }
+      ]
+    },
+    {
+      "name": "choices_below_threshold_keeps_null",
+      "text": "Completely unrelated sentence about gardening.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "ticket",
+            "fields": [
+              {
+                "name": "issue",
+                "dtype": "str",
+                "choices": [
+                  "damaged",
+                  "missing",
+                  "late"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "choices"
+      ],
+      "expected": {
+        "ticket": [
+          {
+            "issue": {
+              "text": "damaged",
+              "confidence": 0.9932305812835693
+            }
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "ticket[0].issue",
+          "confidence": 0.9932305812835693,
+          "margin": 0.49323058128356934
+        }
+      ]
+    },
+    {
+      "name": "choices_with_span_field_kept",
+      "text": "The laptop arrived damaged.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "ticket",
+            "fields": [
+              {
+                "name": "item"
+              },
+              {
+                "name": "issue",
+                "dtype": "str",
+                "choices": [
+                  "shattered",
+                  "vanished"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "choices"
+      ],
+      "expected": {
+        "ticket": [
+          {
+            "item": [
+              {
+                "text": "laptop",
+                "confidence": 0.9876376390457153,
+                "start": 4,
+                "end": 10
+              }
+            ],
+            "issue": {
+              "text": "shattered",
+              "confidence": 0.9985577464103699
+            }
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "ticket[0].item[0]",
+          "confidence": 0.9876376390457153,
+          "margin": 0.48763763904571533
+        },
+        {
+          "path": "ticket[0].issue",
+          "confidence": 0.9985577464103699,
+          "margin": 0.4985577464103699
+        }
+      ]
+    },
+    {
+      "name": "rel_basic",
+      "text": "Tim Cook works at Apple.",
+      "threshold": 0.5,
+      "schema": {
+        "relations": [
+          "works_at"
+        ]
+      },
+      "tags": [
+        "relation_grouping"
+      ],
+      "expected": {
+        "relation_extraction": {
+          "works_at": [
+            {
+              "head": {
+                "text": "Tim Cook",
+                "start": 0,
+                "end": 8,
+                "confidence": 0.8669276833534241
+              },
+              "tail": {
+                "text": "Apple",
+                "start": 18,
+                "end": 23,
+                "confidence": 0.8669276833534241
+              }
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "relation_extraction.works_at[0].head",
+          "confidence": 0.8669276833534241,
+          "margin": 0.3669276833534241
+        },
+        {
+          "path": "relation_extraction.works_at[0].tail",
+          "confidence": 0.8669276833534241,
+          "margin": 0.3669276833534241
+        }
+      ]
+    },
+    {
+      "name": "rel_multi_instance",
+      "text": "Tim Cook works at Apple. Satya Nadella works at Microsoft.",
+      "threshold": 0.5,
+      "schema": {
+        "relations": [
+          "works_at"
+        ]
+      },
+      "tags": [
+        "relation_grouping"
+      ],
+      "expected": {
+        "relation_extraction": {
+          "works_at": [
+            {
+              "head": {
+                "text": "Tim Cook",
+                "start": 0,
+                "end": 8,
+                "confidence": 0.5113732814788818
+              },
+              "tail": {
+                "text": "Microsoft",
+                "start": 48,
+                "end": 57,
+                "confidence": 0.5113732814788818
+              }
+            },
+            {
+              "head": {
+                "text": "Satya Nadella",
+                "start": 25,
+                "end": 38,
+                "confidence": 0.6251569986343384
+              },
+              "tail": {
+                "text": "Microsoft",
+                "start": 48,
+                "end": 57,
+                "confidence": 0.6251569986343384
+              }
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "relation_extraction.works_at[0].head",
+          "confidence": 0.5113732814788818,
+          "margin": 0.011373281478881836
+        },
+        {
+          "path": "relation_extraction.works_at[0].tail",
+          "confidence": 0.5113732814788818,
+          "margin": 0.011373281478881836
+        },
+        {
+          "path": "relation_extraction.works_at[1].head",
+          "confidence": 0.6251569986343384,
+          "margin": 0.12515699863433838
+        },
+        {
+          "path": "relation_extraction.works_at[1].tail",
+          "confidence": 0.6251569986343384,
+          "margin": 0.12515699863433838
+        }
+      ]
+    },
+    {
+      "name": "rel_no_match",
+      "text": "The sky is blue today.",
+      "threshold": 0.5,
+      "schema": {
+        "relations": [
+          "works_at"
+        ]
+      },
+      "tags": [
+        "relation_grouping"
+      ],
+      "expected": {
+        "relation_extraction": {
+          "works_at": []
+        }
+      },
+      "margins": []
+    },
+    {
+      "name": "rel_head_without_tail",
+      "text": "Tim Cook is a person.",
+      "threshold": 0.8,
+      "schema": {
+        "relations": [
+          "works_at"
+        ]
+      },
+      "tags": [
+        "relation_grouping"
+      ],
+      "expected": {
+        "relation_extraction": {
+          "works_at": []
+        }
+      },
+      "margins": []
+    },
+    {
+      "name": "combined_all_tasks",
+      "text": "Tim Cook, the CEO of Apple, announced a fantastic new product in Cupertino on March 15. Contact press@apple.com for details.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location",
+          "date"
+        ],
+        "classification": {
+          "task": "sentiment",
+          "labels": [
+            "positive",
+            "negative"
+          ]
+        },
+        "structures": [
+          {
+            "name": "contact",
+            "fields": [
+              {
+                "name": "email"
+              }
+            ]
+          }
+        ],
+        "relations": [
+          "works_at"
+        ]
+      },
+      "tags": [
+        "relation_grouping"
+      ],
+      "expected": {
+        "contact": [
+          {
+            "email": [
+              {
+                "text": "press@apple.com",
+                "confidence": 0.9989036321640015,
+                "start": 96,
+                "end": 111
+              }
+            ]
+          }
+        ],
+        "entities": {
+          "person": [
+            {
+              "text": "Tim Cook",
+              "confidence": 0.9998986721038818,
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "company": [
+            {
+              "text": "Apple",
+              "confidence": 0.999051034450531,
+              "start": 21,
+              "end": 26
+            }
+          ],
+          "location": [
+            {
+              "text": "Cupertino",
+              "confidence": 0.9998791217803955,
+              "start": 65,
+              "end": 74
+            }
+          ],
+          "date": [
+            {
+              "text": "March 15",
+              "confidence": 0.9986774325370789,
+              "start": 78,
+              "end": 86
+            }
+          ]
+        },
+        "sentiment": {
+          "label": "positive",
+          "confidence": 0.9999933242797852
+        },
+        "relation_extraction": {
+          "works_at": [
+            {
+              "head": {
+                "text": "Tim Cook",
+                "start": 0,
+                "end": 8,
+                "confidence": 0.9762493371963501
+              },
+              "tail": {
+                "text": "Apple",
+                "start": 21,
+                "end": 26,
+                "confidence": 0.9762493371963501
+              }
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "contact[0].email[0]",
+          "confidence": 0.9989036321640015,
+          "margin": 0.49890363216400146
+        },
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9998986721038818,
+          "margin": 0.49989867210388184
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.999051034450531,
+          "margin": 0.499051034450531
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9998791217803955,
+          "margin": 0.4998791217803955
+        },
+        {
+          "path": "entities.date[0]",
+          "confidence": 0.9986774325370789,
+          "margin": 0.49867743253707886
+        },
+        {
+          "path": "sentiment",
+          "confidence": 0.9999933242797852,
+          "margin": 0.49999332427978516
+        },
+        {
+          "path": "relation_extraction.works_at[0].head",
+          "confidence": 0.9762493371963501,
+          "margin": 0.4762493371963501
+        },
+        {
+          "path": "relation_extraction.works_at[0].tail",
+          "confidence": 0.9762493371963501,
+          "margin": 0.4762493371963501
+        }
+      ]
+    },
+    {
+      "name": "combined_entities_and_classification",
+      "text": "Apple's new phone is disappointing and overpriced.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "company",
+          "product"
+        ],
+        "classification": {
+          "task": "sentiment",
+          "labels": [
+            "positive",
+            "negative"
+          ]
+        }
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "company": [
+            {
+              "text": "Apple",
+              "confidence": 0.9989921450614929,
+              "start": 0,
+              "end": 5
+            }
+          ],
+          "product": [
+            {
+              "text": "phone",
+              "confidence": 0.8370745778083801,
+              "start": 12,
+              "end": 17
+            }
+          ]
+        },
+        "sentiment": {
+          "label": "negative",
+          "confidence": 0.9999983310699463
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.9989921450614929,
+          "margin": 0.4989921450614929
+        },
+        {
+          "path": "entities.product[0]",
+          "confidence": 0.8370745778083801,
+          "margin": 0.3370745778083801
+        },
+        {
+          "path": "sentiment",
+          "confidence": 0.9999983310699463,
+          "margin": 0.4999983310699463
+        }
+      ]
+    },
+    {
+      "name": "combined_two_structures",
+      "text": "Alice Johnson (alice@acme.com) attended the Berlin summit on May 2.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "contact",
+            "fields": [
+              {
+                "name": "name"
+              },
+              {
+                "name": "email"
+              }
+            ]
+          },
+          {
+            "name": "event",
+            "fields": [
+              {
+                "name": "place"
+              },
+              {
+                "name": "date"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "contact": [
+          {
+            "name": [
+              {
+                "text": "Alice Johnson",
+                "confidence": 0.9432697296142578,
+                "start": 0,
+                "end": 13
+              }
+            ],
+            "email": [
+              {
+                "text": "alice@acme.com",
+                "confidence": 0.9906644821166992,
+                "start": 15,
+                "end": 29
+              }
+            ]
+          }
+        ],
+        "event": [
+          {
+            "place": [
+              {
+                "text": "Berlin",
+                "confidence": 0.9674386382102966,
+                "start": 44,
+                "end": 50
+              }
+            ],
+            "date": [
+              {
+                "text": "May 2",
+                "confidence": 0.9985606074333191,
+                "start": 61,
+                "end": 66
+              }
+            ]
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "contact[0].name[0]",
+          "confidence": 0.9432697296142578,
+          "margin": 0.4432697296142578
+        },
+        {
+          "path": "contact[0].email[0]",
+          "confidence": 0.9906644821166992,
+          "margin": 0.4906644821166992
+        },
+        {
+          "path": "event[0].place[0]",
+          "confidence": 0.9674386382102966,
+          "margin": 0.46743863821029663
+        },
+        {
+          "path": "event[0].date[0]",
+          "confidence": 0.9985606074333191,
+          "margin": 0.4985606074333191
+        }
+      ]
+    },
+    {
+      "name": "records_json_api",
+      "text": "Alice Johnson works at Acme Corp as an engineer. Bob Smith works at Globex as a manager.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "employment",
+            "mode": "natural",
+            "fields": [
+              {
+                "name": "employee",
+                "dtype": "str",
+                "cardinality": "required_one",
+                "exclusive": true
+              },
+              {
+                "name": "employer",
+                "dtype": "str",
+                "cardinality": "required_one",
+                "exclusive": true
+              },
+              {
+                "name": "role",
+                "cardinality": "zero_or_more",
+                "exclusive": true
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "records"
+      ],
+      "expected": {
+        "employment": [
+          {
+            "employee": {
+              "text": "Alice Johnson",
+              "confidence": 0.9963484406471252,
+              "start": 0,
+              "end": 13
+            },
+            "employer": {
+              "text": "Acme Corp",
+              "confidence": 0.9894514679908752,
+              "start": 23,
+              "end": 32
+            },
+            "role": [
+              {
+                "text": "engineer",
+                "confidence": 0.51130610704422,
+                "start": 39,
+                "end": 47
+              }
+            ]
+          },
+          {
+            "employee": {
+              "text": "Bob Smith",
+              "confidence": 0.9967672824859619,
+              "start": 49,
+              "end": 58
+            },
+            "employer": {
+              "text": "Globex",
+              "confidence": 0.8894899487495422,
+              "start": 68,
+              "end": 74
+            },
+            "role": []
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "employment[0].employee",
+          "confidence": 0.9963484406471252,
+          "margin": 0.49634844064712524
+        },
+        {
+          "path": "employment[0].employer",
+          "confidence": 0.9894514679908752,
+          "margin": 0.48945146799087524
+        },
+        {
+          "path": "employment[0].role[0]",
+          "confidence": 0.51130610704422,
+          "margin": 0.01130610704421997
+        },
+        {
+          "path": "employment[1].employee",
+          "confidence": 0.9967672824859619,
+          "margin": 0.4967672824859619
+        },
+        {
+          "path": "employment[1].employer",
+          "confidence": 0.8894899487495422,
+          "margin": 0.38948994874954224
+        }
+      ]
+    },
+    {
+      "name": "records_natural_defaults",
+      "text": "Alice Johnson works at Acme Corp. Bob Smith works at Globex. Carol White works at Initech.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "employment",
+            "mode": "natural",
+            "fields": [
+              {
+                "name": "employee"
+              },
+              {
+                "name": "employer"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "records"
+      ],
+      "expected": {
+        "employment": [
+          {
+            "employee": {
+              "text": "Alice Johnson",
+              "confidence": 0.9927137494087219,
+              "start": 0,
+              "end": 13
+            },
+            "employer": [
+              {
+                "text": "Acme Corp",
+                "confidence": 0.9613555669784546,
+                "start": 23,
+                "end": 32
+              }
+            ]
+          },
+          {
+            "employee": {
+              "text": "Bob Smith",
+              "confidence": 0.9906039834022522,
+              "start": 34,
+              "end": 43
+            },
+            "employer": []
+          },
+          {
+            "employee": {
+              "text": "Carol White",
+              "confidence": 0.9898331165313721,
+              "start": 61,
+              "end": 72
+            },
+            "employer": [
+              {
+                "text": "Initech",
+                "confidence": 0.5560889840126038,
+                "start": 82,
+                "end": 89
+              }
+            ]
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "employment[0].employee",
+          "confidence": 0.9927137494087219,
+          "margin": 0.4927137494087219
+        },
+        {
+          "path": "employment[0].employer[0]",
+          "confidence": 0.9613555669784546,
+          "margin": 0.4613555669784546
+        },
+        {
+          "path": "employment[1].employee",
+          "confidence": 0.9906039834022522,
+          "margin": 0.4906039834022522
+        },
+        {
+          "path": "employment[2].employee",
+          "confidence": 0.9898331165313721,
+          "margin": 0.48983311653137207
+        },
+        {
+          "path": "employment[2].employer[0]",
+          "confidence": 0.5560889840126038,
+          "margin": 0.05608898401260376
+        }
+      ]
+    },
+    {
+      "name": "records_explicit_anchor",
+      "text": "Acme Corp hired Alice Johnson. Globex hired Bob Smith.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "hiring",
+            "mode": "natural",
+            "anchor": "company",
+            "fields": [
+              {
+                "name": "person",
+                "dtype": "str"
+              },
+              {
+                "name": "company",
+                "dtype": "str"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "records"
+      ],
+      "expected": {
+        "hiring": [
+          {
+            "person": {
+              "text": "Alice Johnson",
+              "confidence": 0.9597469568252563,
+              "start": 16,
+              "end": 29
+            },
+            "company": {
+              "text": "Acme Corp",
+              "confidence": 0.9827455878257751,
+              "start": 0,
+              "end": 9
+            }
+          },
+          {
+            "person": {
+              "text": "Bob Smith",
+              "confidence": 0.7471123933792114,
+              "start": 44,
+              "end": 53
+            },
+            "company": {
+              "text": "Globex",
+              "confidence": 0.9833993911743164,
+              "start": 31,
+              "end": 37
+            }
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "hiring[0].person",
+          "confidence": 0.9597469568252563,
+          "margin": 0.45974695682525635
+        },
+        {
+          "path": "hiring[0].company",
+          "confidence": 0.9827455878257751,
+          "margin": 0.48274558782577515
+        },
+        {
+          "path": "hiring[1].person",
+          "confidence": 0.7471123933792114,
+          "margin": 0.24711239337921143
+        },
+        {
+          "path": "hiring[1].company",
+          "confidence": 0.9833993911743164,
+          "margin": 0.4833993911743164
+        }
+      ]
+    },
+    {
+      "name": "records_choices_literal",
+      "text": "The laptop arrived damaged and I want a refund. The charger works fine.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "ticket",
+            "mode": "natural",
+            "fields": [
+              {
+                "name": "product",
+                "dtype": "str",
+                "cardinality": "required_one",
+                "exclusive": true
+              },
+              {
+                "name": "resolution",
+                "dtype": "str",
+                "choices": [
+                  "refund",
+                  "exchange",
+                  "repair"
+                ],
+                "cardinality": "required_one",
+                "exclusive": true
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "records",
+        "choices"
+      ],
+      "expected": {
+        "ticket": [
+          {
+            "product": {
+              "text": "laptop",
+              "confidence": 0.9900736808776855,
+              "start": 4,
+              "end": 10
+            },
+            "resolution": {
+              "text": "refund",
+              "confidence": 0.9998894929885864,
+              "start": 40,
+              "end": 46
+            }
+          },
+          {
+            "product": {
+              "text": "charger",
+              "confidence": 0.9905712604522705,
+              "start": 52,
+              "end": 59
+            },
+            "resolution": null
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "ticket[0].product",
+          "confidence": 0.9900736808776855,
+          "margin": 0.49007368087768555
+        },
+        {
+          "path": "ticket[0].resolution",
+          "confidence": 0.9998894929885864,
+          "margin": 0.4998894929885864
+        },
+        {
+          "path": "ticket[1].product",
+          "confidence": 0.9905712604522705,
+          "margin": 0.4905712604522705
+        }
+      ]
+    },
+    {
+      "name": "records_choices_scored",
+      "text": "My headphones stopped working after two days.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "ticket",
+            "mode": "natural",
+            "fields": [
+              {
+                "name": "product",
+                "dtype": "str",
+                "cardinality": "required_one",
+                "exclusive": true
+              },
+              {
+                "name": "issue",
+                "choices": [
+                  "damaged",
+                  "defective",
+                  "late"
+                ],
+                "cardinality": "zero_or_more",
+                "exclusive": true
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "records",
+        "choices"
+      ],
+      "expected": {
+        "ticket": [
+          {
+            "product": {
+              "text": "headphones",
+              "confidence": 0.9941049218177795,
+              "start": 3,
+              "end": 13
+            },
+            "issue": [
+              {
+                "text": "defective",
+                "confidence": 0.9975671768188477
+              },
+              {
+                "text": "late",
+                "confidence": 0.6309012174606323
+              }
+            ]
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "ticket[0].product",
+          "confidence": 0.9941049218177795,
+          "margin": 0.49410492181777954
+        },
+        {
+          "path": "ticket[0].issue[0]",
+          "confidence": 0.9975671768188477,
+          "margin": 0.49756717681884766
+        },
+        {
+          "path": "ticket[0].issue[1]",
+          "confidence": 0.6309012174606323,
+          "margin": 0.13090121746063232
+        }
+      ]
+    },
+    {
+      "name": "records_latent",
+      "text": "Tim Cook leads Apple. Satya Nadella leads Microsoft.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "leadership",
+            "mode": "latent",
+            "fields": [
+              {
+                "name": "person",
+                "dtype": "str"
+              },
+              {
+                "name": "company",
+                "dtype": "str"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "records"
+      ],
+      "expected": {
+        "leadership": [
+          {
+            "person": {
+              "text": "Tim Cook",
+              "confidence": 0.9558097720146179,
+              "start": 0,
+              "end": 8
+            },
+            "company": null
+          },
+          {
+            "person": {
+              "text": "Tim Cook",
+              "confidence": 0.9375697374343872,
+              "start": 0,
+              "end": 8
+            },
+            "company": null
+          },
+          {
+            "person": null,
+            "company": {
+              "text": "Microsoft",
+              "confidence": 0.8284974694252014,
+              "start": 42,
+              "end": 51
+            }
+          },
+          {
+            "person": {
+              "text": "Tim Cook",
+              "confidence": 0.982586681842804,
+              "start": 0,
+              "end": 8
+            },
+            "company": null
+          },
+          {
+            "person": null,
+            "company": {
+              "text": "Microsoft",
+              "confidence": 0.6728478670120239,
+              "start": 42,
+              "end": 51
+            }
+          },
+          {
+            "person": null,
+            "company": {
+              "text": "Microsoft",
+              "confidence": 0.6099055409431458,
+              "start": 42,
+              "end": 51
+            }
+          },
+          {
+            "person": {
+              "text": "Satya Nadella",
+              "confidence": 0.5403111577033997,
+              "start": 22,
+              "end": 35
+            },
+            "company": null
+          },
+          {
+            "person": null,
+            "company": {
+              "text": "Microsoft",
+              "confidence": 0.6953241229057312,
+              "start": 42,
+              "end": 51
+            }
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "leadership[0].person",
+          "confidence": 0.9558097720146179,
+          "margin": 0.4558097720146179
+        },
+        {
+          "path": "leadership[1].person",
+          "confidence": 0.9375697374343872,
+          "margin": 0.4375697374343872
+        },
+        {
+          "path": "leadership[2].company",
+          "confidence": 0.8284974694252014,
+          "margin": 0.3284974694252014
+        },
+        {
+          "path": "leadership[3].person",
+          "confidence": 0.982586681842804,
+          "margin": 0.48258668184280396
+        },
+        {
+          "path": "leadership[4].company",
+          "confidence": 0.6728478670120239,
+          "margin": 0.17284786701202393
+        },
+        {
+          "path": "leadership[5].company",
+          "confidence": 0.6099055409431458,
+          "margin": 0.10990554094314575
+        },
+        {
+          "path": "leadership[6].person",
+          "confidence": 0.5403111577033997,
+          "margin": 0.04031115770339966
+        },
+        {
+          "path": "leadership[7].company",
+          "confidence": 0.6953241229057312,
+          "margin": 0.1953241229057312
+        }
+      ]
+    },
+    {
+      "name": "records_anchorless",
+      "text": "Tim Cook leads Apple. Satya Nadella leads Microsoft.",
+      "threshold": 0.5,
+      "schema": {
+        "structures": [
+          {
+            "name": "leadership",
+            "mode": "anchorless",
+            "fields": [
+              {
+                "name": "person",
+                "dtype": "str"
+              },
+              {
+                "name": "company",
+                "dtype": "str"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "records"
+      ],
+      "expected": {},
+      "margins": []
+    },
+    {
+      "name": "records_with_entities",
+      "text": "Jane Doe joined Initech in Austin in 2019.",
+      "threshold": 0.5,
+      "schema": {
+        "entities": [
+          "location",
+          "date"
+        ],
+        "structures": [
+          {
+            "name": "employment",
+            "mode": "natural",
+            "fields": [
+              {
+                "name": "employee",
+                "dtype": "str",
+                "cardinality": "required_one",
+                "exclusive": true
+              },
+              {
+                "name": "employer",
+                "dtype": "str",
+                "cardinality": "required_one",
+                "exclusive": true
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "records"
+      ],
+      "expected": {
+        "employment": [
+          {
+            "employee": {
+              "text": "Jane Doe",
+              "confidence": 0.9989894032478333,
+              "start": 0,
+              "end": 8
+            },
+            "employer": {
+              "text": "Initech",
+              "confidence": 0.9939488172531128,
+              "start": 16,
+              "end": 23
+            }
+          }
+        ],
+        "entities": {
+          "location": [
+            {
+              "text": "Austin",
+              "confidence": 0.9984737038612366,
+              "start": 27,
+              "end": 33
+            },
+            {
+              "text": "Initech",
+              "confidence": 0.5141148567199707,
+              "start": 16,
+              "end": 23
+            }
+          ],
+          "date": [
+            {
+              "text": "2019",
+              "confidence": 0.9979323148727417,
+              "start": 37,
+              "end": 41
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "employment[0].employee",
+          "confidence": 0.9989894032478333,
+          "margin": 0.49898940324783325
+        },
+        {
+          "path": "employment[0].employer",
+          "confidence": 0.9939488172531128,
+          "margin": 0.4939488172531128
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9984737038612366,
+          "margin": 0.4984737038612366
+        },
+        {
+          "path": "entities.location[1]",
+          "confidence": 0.5141148567199707,
+          "margin": 0.014114856719970703
+        },
+        {
+          "path": "entities.date[0]",
+          "confidence": 0.9979323148727417,
+          "margin": 0.4979323148727417
+        }
+      ]
+    },
+    {
+      "name": "borderline_accept_ner_basic",
+      "text": "Tim Cook is the CEO of Apple.",
+      "threshold": 0.98606,
+      "schema": {
+        "entities": [
+          "person",
+          "company"
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Tim Cook",
+              "confidence": 0.9988515377044678,
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "company": [
+            {
+              "text": "Apple",
+              "confidence": 0.996059775352478,
+              "start": 23,
+              "end": 28
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9988515377044678,
+          "margin": 0.012791537704467726
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.996059775352478,
+          "margin": 0.00999977535247798
+        }
+      ]
+    },
+    {
+      "name": "borderline_accept_ner_many_labels",
+      "text": "Dr. Jane Smith met Barack Obama in Berlin on Tuesday to discuss Tesla and Google.",
+      "threshold": 0.901375,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location",
+          "date",
+          "title",
+          "organization",
+          "product",
+          "event"
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Barack Obama",
+              "confidence": 0.9981671571731567,
+              "start": 19,
+              "end": 31
+            },
+            {
+              "text": "Jane Smith",
+              "confidence": 0.9113751649856567,
+              "start": 4,
+              "end": 14
+            }
+          ],
+          "company": [
+            {
+              "text": "Google",
+              "confidence": 0.987851619720459,
+              "start": 74,
+              "end": 80
+            },
+            {
+              "text": "Tesla",
+              "confidence": 0.9871065616607666,
+              "start": 64,
+              "end": 69
+            }
+          ],
+          "location": [
+            {
+              "text": "Berlin",
+              "confidence": 0.9995206594467163,
+              "start": 35,
+              "end": 41
+            }
+          ],
+          "date": [
+            {
+              "text": "Tuesday",
+              "confidence": 0.9951537847518921,
+              "start": 45,
+              "end": 52
+            }
+          ],
+          "title": [],
+          "organization": [],
+          "product": [],
+          "event": []
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9981671571731567,
+          "margin": 0.0967921571731567
+        },
+        {
+          "path": "entities.person[1]",
+          "confidence": 0.9113751649856567,
+          "margin": 0.010000164985656701
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.987851619720459,
+          "margin": 0.08647661972045895
+        },
+        {
+          "path": "entities.company[1]",
+          "confidence": 0.9871065616607666,
+          "margin": 0.08573156166076656
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9995206594467163,
+          "margin": 0.09814565944671627
+        },
+        {
+          "path": "entities.date[0]",
+          "confidence": 0.9951537847518921,
+          "margin": 0.09377878475189205
+        }
+      ]
+    },
+    {
+      "name": "borderline_reject_ner_many_labels",
+      "text": "Dr. Jane Smith met Barack Obama in Berlin on Tuesday to discuss Tesla and Google.",
+      "threshold": 0.921375,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location",
+          "date",
+          "title",
+          "organization",
+          "product",
+          "event"
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Barack Obama",
+              "confidence": 0.9981671571731567,
+              "start": 19,
+              "end": 31
+            }
+          ],
+          "company": [
+            {
+              "text": "Google",
+              "confidence": 0.987851619720459,
+              "start": 74,
+              "end": 80
+            },
+            {
+              "text": "Tesla",
+              "confidence": 0.9871065616607666,
+              "start": 64,
+              "end": 69
+            }
+          ],
+          "location": [
+            {
+              "text": "Berlin",
+              "confidence": 0.9995206594467163,
+              "start": 35,
+              "end": 41
+            }
+          ],
+          "date": [
+            {
+              "text": "Tuesday",
+              "confidence": 0.9951537847518921,
+              "start": 45,
+              "end": 52
+            }
+          ],
+          "title": [],
+          "organization": [],
+          "product": [],
+          "event": []
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9981671571731567,
+          "margin": 0.07679215717315668
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.987851619720459,
+          "margin": 0.06647661972045893
+        },
+        {
+          "path": "entities.company[1]",
+          "confidence": 0.9871065616607666,
+          "margin": 0.06573156166076655
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9995206594467163,
+          "margin": 0.07814565944671625
+        },
+        {
+          "path": "entities.date[0]",
+          "confidence": 0.9951537847518921,
+          "margin": 0.07377878475189203
+        }
+      ]
+    },
+    {
+      "name": "borderline_accept_ner_threshold_030",
+      "text": "Tim Cook is the CEO of Apple.",
+      "threshold": 0.983572,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location"
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Tim Cook",
+              "confidence": 0.9988415837287903,
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "company": [
+            {
+              "text": "Apple",
+              "confidence": 0.9935718774795532,
+              "start": 23,
+              "end": 28
+            }
+          ],
+          "location": []
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9988415837287903,
+          "margin": 0.015269583728790281
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.9935718774795532,
+          "margin": 0.00999987747955322
+        }
+      ]
+    },
+    {
+      "name": "borderline_accept_ner_threshold_070",
+      "text": "Tim Cook is the CEO of Apple.",
+      "threshold": 0.983572,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location"
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "entities": {
+          "person": [
+            {
+              "text": "Tim Cook",
+              "confidence": 0.9988415837287903,
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "company": [
+            {
+              "text": "Apple",
+              "confidence": 0.9935718774795532,
+              "start": 23,
+              "end": 28
+            }
+          ],
+          "location": []
+        }
+      },
+      "margins": [
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9988415837287903,
+          "margin": 0.015269583728790281
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.9935718774795532,
+          "margin": 0.00999987747955322
+        }
+      ]
+    },
+    {
+      "name": "borderline_accept_cls_single_positive",
+      "text": "I love this product! It's amazing.",
+      "threshold": 0.99,
+      "schema": {
+        "classification": {
+          "task": "sentiment",
+          "labels": [
+            "positive",
+            "negative"
+          ]
+        }
+      },
+      "tags": [],
+      "expected": {
+        "sentiment": {
+          "label": "positive",
+          "confidence": 0.9999998807907104
+        }
+      },
+      "margins": [
+        {
+          "path": "sentiment",
+          "confidence": 0.9999998807907104,
+          "margin": 0.009999880790710458
+        }
+      ]
+    },
+    {
+      "name": "borderline_accept_cls_multi_label",
+      "text": "The team scored a goal while the new phone launched at the tech expo.",
+      "threshold": 0.566595,
+      "schema": {
+        "classification": {
+          "task": "topic",
+          "labels": [
+            "sports",
+            "technology",
+            "politics",
+            "food"
+          ],
+          "multi_label": true
+        }
+      },
+      "tags": [],
+      "expected": {
+        "topic": [
+          {
+            "label": "sports",
+            "confidence": 0.5765951871871948
+          },
+          {
+            "label": "technology",
+            "confidence": 0.9264628887176514
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "topic[0]",
+          "confidence": 0.5765951871871948,
+          "margin": 0.010000187187194864
+        },
+        {
+          "path": "topic[1]",
+          "confidence": 0.9264628887176514,
+          "margin": 0.3598678887176514
+        }
+      ]
+    },
+    {
+      "name": "borderline_reject_cls_multi_label",
+      "text": "The team scored a goal while the new phone launched at the tech expo.",
+      "threshold": 0.586595,
+      "schema": {
+        "classification": {
+          "task": "topic",
+          "labels": [
+            "sports",
+            "technology",
+            "politics",
+            "food"
+          ],
+          "multi_label": true
+        }
+      },
+      "tags": [],
+      "expected": {
+        "topic": [
+          {
+            "label": "sports",
+            "confidence": 0.5765951871871948
+          },
+          {
+            "label": "technology",
+            "confidence": 0.9264628887176514
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "topic[0]",
+          "confidence": 0.5765951871871948,
+          "margin": 0.009999812812805153
+        },
+        {
+          "path": "topic[1]",
+          "confidence": 0.9264628887176514,
+          "margin": 0.3398678887176514
+        }
+      ]
+    },
+    {
+      "name": "borderline_accept_struct_contact",
+      "text": "Contact john@email.com or call 555-1234.",
+      "threshold": 0.980966,
+      "schema": {
+        "structures": [
+          {
+            "name": "contact",
+            "fields": [
+              {
+                "name": "email"
+              },
+              {
+                "name": "phone"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "contact": [
+          {
+            "email": [
+              {
+                "text": "john@email.com",
+                "confidence": 0.993224561214447,
+                "start": 8,
+                "end": 22
+              }
+            ],
+            "phone": [
+              {
+                "text": "555-1234",
+                "confidence": 0.990965723991394,
+                "start": 31,
+                "end": 39
+              }
+            ]
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "contact[0].email[0]",
+          "confidence": 0.993224561214447,
+          "margin": 0.012258561214447017
+        },
+        {
+          "path": "contact[0].phone[0]",
+          "confidence": 0.990965723991394,
+          "margin": 0.009999723991394038
+        }
+      ]
+    },
+    {
+      "name": "borderline_accept_struct_dtype_str_first_not_max",
+      "text": "Alice met Bob and then Carol and afterwards Dave joined them.",
+      "threshold": 0.983129,
+      "schema": {
+        "structures": [
+          {
+            "name": "meeting",
+            "fields": [
+              {
+                "name": "person",
+                "dtype": "str"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "field_dtype"
+      ],
+      "expected": {
+        "meeting": [
+          {
+            "person": {
+              "text": "Dave",
+              "confidence": 0.993128776550293,
+              "start": 44,
+              "end": 48
+            }
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "meeting[0].person",
+          "confidence": 0.993128776550293,
+          "margin": 0.009999776550292938
+        }
+      ]
+    },
+    {
+      "name": "borderline_accept_struct_multi_instance",
+      "text": "Alice Johnson works at Acme Corp. Bob Smith works at Globex. Carol White works at Initech.",
+      "threshold": 0.978194,
+      "schema": {
+        "structures": [
+          {
+            "name": "employment",
+            "fields": [
+              {
+                "name": "employee"
+              },
+              {
+                "name": "employer"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "employment": [
+          {
+            "employee": [
+              {
+                "text": "Alice Johnson",
+                "confidence": 0.9927137494087219,
+                "start": 0,
+                "end": 13
+              },
+              {
+                "text": "Bob Smith",
+                "confidence": 0.9906039834022522,
+                "start": 34,
+                "end": 43
+              },
+              {
+                "text": "Carol White",
+                "confidence": 0.9898331165313721,
+                "start": 61,
+                "end": 72
+              }
+            ],
+            "employer": [
+              {
+                "text": "Acme Corp",
+                "confidence": 0.9926583170890808,
+                "start": 23,
+                "end": 32
+              },
+              {
+                "text": "Globex",
+                "confidence": 0.988295316696167,
+                "start": 53,
+                "end": 59
+              },
+              {
+                "text": "Initech",
+                "confidence": 0.9881939888000488,
+                "start": 82,
+                "end": 89
+              }
+            ]
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "employment[0].employee[0]",
+          "confidence": 0.9927137494087219,
+          "margin": 0.014519749408721916
+        },
+        {
+          "path": "employment[0].employee[1]",
+          "confidence": 0.9906039834022522,
+          "margin": 0.01240998340225219
+        },
+        {
+          "path": "employment[0].employee[2]",
+          "confidence": 0.9898331165313721,
+          "margin": 0.011639116531372062
+        },
+        {
+          "path": "employment[0].employer[0]",
+          "confidence": 0.9926583170890808,
+          "margin": 0.014464317089080803
+        },
+        {
+          "path": "employment[0].employer[1]",
+          "confidence": 0.988295316696167,
+          "margin": 0.010101316696166984
+        },
+        {
+          "path": "employment[0].employer[2]",
+          "confidence": 0.9881939888000488,
+          "margin": 0.00999998880004882
+        }
+      ]
+    },
+    {
+      "name": "borderline_reject_struct_multi_instance",
+      "text": "Alice Johnson works at Acme Corp. Bob Smith works at Globex. Carol White works at Initech.",
+      "threshold": 0.998194,
+      "schema": {
+        "structures": [
+          {
+            "name": "employment",
+            "fields": [
+              {
+                "name": "employee"
+              },
+              {
+                "name": "employer"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [],
+      "expected": {},
+      "margins": []
+    },
+    {
+      "name": "borderline_accept_rel_basic",
+      "text": "Tim Cook works at Apple.",
+      "threshold": 0.856928,
+      "schema": {
+        "relations": [
+          "works_at"
+        ]
+      },
+      "tags": [
+        "relation_grouping"
+      ],
+      "expected": {
+        "relation_extraction": {
+          "works_at": [
+            {
+              "head": {
+                "text": "Tim Cook",
+                "start": 0,
+                "end": 8,
+                "confidence": 0.8669276833534241
+              },
+              "tail": {
+                "text": "Apple",
+                "start": 18,
+                "end": 23,
+                "confidence": 0.8669276833534241
+              }
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "relation_extraction.works_at[0].head",
+          "confidence": 0.8669276833534241,
+          "margin": 0.00999968335342405
+        },
+        {
+          "path": "relation_extraction.works_at[0].tail",
+          "confidence": 0.8669276833534241,
+          "margin": 0.00999968335342405
+        }
+      ]
+    },
+    {
+      "name": "borderline_reject_rel_basic",
+      "text": "Tim Cook works at Apple.",
+      "threshold": 0.876928,
+      "schema": {
+        "relations": [
+          "works_at"
+        ]
+      },
+      "tags": [
+        "relation_grouping"
+      ],
+      "expected": {
+        "relation_extraction": {
+          "works_at": []
+        }
+      },
+      "margins": []
+    },
+    {
+      "name": "borderline_accept_combined_all_tasks",
+      "text": "Tim Cook, the CEO of Apple, announced a fantastic new product in Cupertino on March 15. Contact press@apple.com for details.",
+      "threshold": 0.966249,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location",
+          "date"
+        ],
+        "classification": {
+          "task": "sentiment",
+          "labels": [
+            "positive",
+            "negative"
+          ]
+        },
+        "structures": [
+          {
+            "name": "contact",
+            "fields": [
+              {
+                "name": "email"
+              }
+            ]
+          }
+        ],
+        "relations": [
+          "works_at"
+        ]
+      },
+      "tags": [
+        "relation_grouping"
+      ],
+      "expected": {
+        "contact": [
+          {
+            "email": [
+              {
+                "text": "press@apple.com",
+                "confidence": 0.9989036321640015,
+                "start": 96,
+                "end": 111
+              }
+            ]
+          }
+        ],
+        "entities": {
+          "person": [
+            {
+              "text": "Tim Cook",
+              "confidence": 0.9998986721038818,
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "company": [
+            {
+              "text": "Apple",
+              "confidence": 0.999051034450531,
+              "start": 21,
+              "end": 26
+            }
+          ],
+          "location": [
+            {
+              "text": "Cupertino",
+              "confidence": 0.9998791217803955,
+              "start": 65,
+              "end": 74
+            }
+          ],
+          "date": [
+            {
+              "text": "March 15",
+              "confidence": 0.9986774325370789,
+              "start": 78,
+              "end": 86
+            }
+          ]
+        },
+        "sentiment": {
+          "label": "positive",
+          "confidence": 0.9999933242797852
+        },
+        "relation_extraction": {
+          "works_at": [
+            {
+              "head": {
+                "text": "Tim Cook",
+                "start": 0,
+                "end": 8,
+                "confidence": 0.9762493371963501
+              },
+              "tail": {
+                "text": "Apple",
+                "start": 21,
+                "end": 26,
+                "confidence": 0.9762493371963501
+              }
+            }
+          ]
+        }
+      },
+      "margins": [
+        {
+          "path": "contact[0].email[0]",
+          "confidence": 0.9989036321640015,
+          "margin": 0.03265463216400144
+        },
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9998986721038818,
+          "margin": 0.03364967210388181
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.999051034450531,
+          "margin": 0.03280203445053098
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9998791217803955,
+          "margin": 0.03363012178039548
+        },
+        {
+          "path": "entities.date[0]",
+          "confidence": 0.9986774325370789,
+          "margin": 0.03242843253707883
+        },
+        {
+          "path": "sentiment",
+          "confidence": 0.9999933242797852,
+          "margin": 0.03374432427978513
+        },
+        {
+          "path": "relation_extraction.works_at[0].head",
+          "confidence": 0.9762493371963501,
+          "margin": 0.010000337196350073
+        },
+        {
+          "path": "relation_extraction.works_at[0].tail",
+          "confidence": 0.9762493371963501,
+          "margin": 0.010000337196350073
+        }
+      ]
+    },
+    {
+      "name": "borderline_reject_combined_all_tasks",
+      "text": "Tim Cook, the CEO of Apple, announced a fantastic new product in Cupertino on March 15. Contact press@apple.com for details.",
+      "threshold": 0.986249,
+      "schema": {
+        "entities": [
+          "person",
+          "company",
+          "location",
+          "date"
+        ],
+        "classification": {
+          "task": "sentiment",
+          "labels": [
+            "positive",
+            "negative"
+          ]
+        },
+        "structures": [
+          {
+            "name": "contact",
+            "fields": [
+              {
+                "name": "email"
+              }
+            ]
+          }
+        ],
+        "relations": [
+          "works_at"
+        ]
+      },
+      "tags": [
+        "relation_grouping"
+      ],
+      "expected": {
+        "contact": [
+          {
+            "email": [
+              {
+                "text": "press@apple.com",
+                "confidence": 0.9989036321640015,
+                "start": 96,
+                "end": 111
+              }
+            ]
+          }
+        ],
+        "entities": {
+          "person": [
+            {
+              "text": "Tim Cook",
+              "confidence": 0.9998986721038818,
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "company": [
+            {
+              "text": "Apple",
+              "confidence": 0.999051034450531,
+              "start": 21,
+              "end": 26
+            }
+          ],
+          "location": [
+            {
+              "text": "Cupertino",
+              "confidence": 0.9998791217803955,
+              "start": 65,
+              "end": 74
+            }
+          ],
+          "date": [
+            {
+              "text": "March 15",
+              "confidence": 0.9986774325370789,
+              "start": 78,
+              "end": 86
+            }
+          ]
+        },
+        "sentiment": {
+          "label": "positive",
+          "confidence": 0.9999933242797852
+        },
+        "relation_extraction": {
+          "works_at": []
+        }
+      },
+      "margins": [
+        {
+          "path": "contact[0].email[0]",
+          "confidence": 0.9989036321640015,
+          "margin": 0.012654632164001423
+        },
+        {
+          "path": "entities.person[0]",
+          "confidence": 0.9998986721038818,
+          "margin": 0.013649672103881794
+        },
+        {
+          "path": "entities.company[0]",
+          "confidence": 0.999051034450531,
+          "margin": 0.012802034450530964
+        },
+        {
+          "path": "entities.location[0]",
+          "confidence": 0.9998791217803955,
+          "margin": 0.013630121780395466
+        },
+        {
+          "path": "entities.date[0]",
+          "confidence": 0.9986774325370789,
+          "margin": 0.012428432537078815
+        },
+        {
+          "path": "sentiment",
+          "confidence": 0.9999933242797852,
+          "margin": 0.013744324279785114
+        }
+      ]
+    },
+    {
+      "name": "borderline_accept_combined_two_structures",
+      "text": "Alice Johnson (alice@acme.com) attended the Berlin summit on May 2.",
+      "threshold": 0.93327,
+      "schema": {
+        "structures": [
+          {
+            "name": "contact",
+            "fields": [
+              {
+                "name": "name"
+              },
+              {
+                "name": "email"
+              }
+            ]
+          },
+          {
+            "name": "event",
+            "fields": [
+              {
+                "name": "place"
+              },
+              {
+                "name": "date"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "contact": [
+          {
+            "name": [
+              {
+                "text": "Alice Johnson",
+                "confidence": 0.9432697296142578,
+                "start": 0,
+                "end": 13
+              }
+            ],
+            "email": [
+              {
+                "text": "alice@acme.com",
+                "confidence": 0.9906644821166992,
+                "start": 15,
+                "end": 29
+              }
+            ]
+          }
+        ],
+        "event": [
+          {
+            "place": [
+              {
+                "text": "Berlin",
+                "confidence": 0.9674386382102966,
+                "start": 44,
+                "end": 50
+              }
+            ],
+            "date": [
+              {
+                "text": "May 2",
+                "confidence": 0.9985606074333191,
+                "start": 61,
+                "end": 66
+              }
+            ]
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "contact[0].name[0]",
+          "confidence": 0.9432697296142578,
+          "margin": 0.009999729614257769
+        },
+        {
+          "path": "contact[0].email[0]",
+          "confidence": 0.9906644821166992,
+          "margin": 0.057394482116699175
+        },
+        {
+          "path": "event[0].place[0]",
+          "confidence": 0.9674386382102966,
+          "margin": 0.03416863821029659
+        },
+        {
+          "path": "event[0].date[0]",
+          "confidence": 0.9985606074333191,
+          "margin": 0.06529060743331905
+        }
+      ]
+    },
+    {
+      "name": "borderline_reject_combined_two_structures",
+      "text": "Alice Johnson (alice@acme.com) attended the Berlin summit on May 2.",
+      "threshold": 0.95327,
+      "schema": {
+        "structures": [
+          {
+            "name": "contact",
+            "fields": [
+              {
+                "name": "name"
+              },
+              {
+                "name": "email"
+              }
+            ]
+          },
+          {
+            "name": "event",
+            "fields": [
+              {
+                "name": "place"
+              },
+              {
+                "name": "date"
+              }
+            ]
+          }
+        ]
+      },
+      "tags": [],
+      "expected": {
+        "contact": [
+          {
+            "name": [],
+            "email": [
+              {
+                "text": "alice@acme.com",
+                "confidence": 0.9906644821166992,
+                "start": 15,
+                "end": 29
+              }
+            ]
+          }
+        ],
+        "event": [
+          {
+            "place": [
+              {
+                "text": "Berlin",
+                "confidence": 0.9674386382102966,
+                "start": 44,
+                "end": 50
+              }
+            ],
+            "date": [
+              {
+                "text": "May 2",
+                "confidence": 0.9985606074333191,
+                "start": 61,
+                "end": 66
+              }
+            ]
+          }
+        ]
+      },
+      "margins": [
+        {
+          "path": "contact[0].email[0]",
+          "confidence": 0.9906644821166992,
+          "margin": 0.03739448211669927
+        },
+        {
+          "path": "event[0].place[0]",
+          "confidence": 0.9674386382102966,
+          "margin": 0.01416863821029668
+        },
+        {
+          "path": "event[0].date[0]",
+          "confidence": 0.9985606074333191,
+          "margin": 0.04529060743331914
+        }
+      ]
+    }
+  ]
+}
