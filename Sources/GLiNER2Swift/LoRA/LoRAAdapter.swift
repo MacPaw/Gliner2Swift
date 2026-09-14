@@ -48,7 +48,10 @@ public func mergeLoRAWeights(
         // then the converted one. Without this fallback only `encoder.*` pairs match —
         // those keys are identical in both spaces — and every span_rep / count_embed /
         // count_pred / classifier delta is silently dropped, partially applying the adapter.
-        let candidates = [path + ".weight", Extractor.mapRawKey(path) + ".weight"]
+        // GLiNER2.5 adapters (`boundary_head.*`, `relation_scorer.*`, `record_decoder.*`)
+        // use the boundary key rule.
+        let candidates = [path + ".weight", Extractor.mapRawKey(path) + ".weight",
+                          Extractor.mapRawBoundaryKey(path) + ".weight"]
         guard let weightKey = candidates.first(where: { baseWeights[$0] != nil }),
               let baseWeight = baseWeights[weightKey] else { continue }
 
