@@ -13,29 +13,26 @@
 //    limitations under the License.
 //
 // Extractor.swift
-// GLiNER2 Extractor model
+// GLiNER2 Extractor models
 //
-// Matches Python: gliner2/model.py:Extractor
+// Matches Python: gliner2/models/base.py:BaseExtractorModel (shared encoder + classifier),
+// gliner2/models/span/model.py:SpanExtractorModel (SpanExtractor below) and
+// gliner2/models/boundary/model.py:BoundaryExtractorModel (BoundaryExtractor, in
+// Model/Boundary/BoundaryExtractor.swift).
 
 import Foundation
 import MLX
 import MLXNN
 
-/// GLiNER2 Extractor Model.
+/// What both GLiNER2 architectures share: the DeBERTa encoder, the classification MLP,
+/// weight loading, quantization and the optional compiled encoder.
 ///
-/// This model accepts PreprocessedBatch for efficient training and inference.
-/// Architecture:
-/// - Encoder: DeBERTa-v3-base (microsoft/deberta-v3-base) with disentangled attention
-/// - Span representation: SpanMarkerV0
-/// - Classifier: MLP for classification tasks
-/// - Count prediction: MLP for count prediction
-/// - Count embedding: CountLSTMv2 for structure extraction
+/// `GLiNER2.model` is typed as this class. The decoder-specific heads live in the two
+/// subclasses, `SpanExtractor` (v1 checkpoints) and `BoundaryExtractor` (GLiNER2.5);
+/// `Extractor.make(config:)` picks the one the checkpoint's `architecture` asks for.
 public class Extractor: Module {
     /// Model configuration
     public let config: ExtractorConfig
-
-    /// Maximum span width
-    public let maxWidth: Int
 
     /// Hidden size from encoder
     public let hiddenSize: Int
@@ -43,17 +40,8 @@ public class Extractor: Module {
     /// DeBERTa encoder with disentangled attention
     public let encoder: DeBERTaEncoder
 
-    /// Span representation layer
-    public let spanRep: SpanRepLayer
-
     /// Classifier for classification tasks: hidden → 2*hidden → 1
     public let classifier: Sequential
-
-    /// Count prediction layer: hidden → 2*hidden → 20
-    public let countPred: Sequential
-
-    /// Count embedding module (CountLSTMv2 for gliner2-base-v1)
-    public let countEmbed: CountLSTMv2
 
     /// Compiled encoder forward, when enabled.
     ///
@@ -65,64 +53,40 @@ public class Extractor: Module {
     /// Whether the caller asked for a compiled encoder, so it can be rebuilt after a load.
     private var wantsCompiledEncoder = false
 
-    /// Initialize Extractor from configuration
+    /// Initialize the shared encoder + classifier from configuration.
     ///
-    /// - Parameter config: Model configuration
+    /// Prefer `Extractor.make(config:)`, which returns the subclass for the checkpoint's
+    /// architecture; this initializer alone builds a model without a decoder head.
     public init(config: ExtractorConfig) {
         self.config = config
-        self.maxWidth = config.maxWidth
         self.hiddenSize = config.hiddenSize
 
-        // Initialize DeBERTa encoder
-        let debertaConfig = DeBERTaConfig(
-            vocabSize: config.vocabSize,
-            hiddenSize: config.hiddenSize,
-            numHiddenLayers: 12,
-            numAttentionHeads: 12,
-            intermediateSize: 3072,
-            positionBuckets: 256,
-            maxPositionEmbeddings: 512,
-            hiddenDropoutProb: 0.1,
-            attentionDropoutProb: 0.1,
-            layerNormEps: 1e-7,
-            posAttType: ["c2p", "p2c"]
-        )
-        self.encoder = DeBERTaEncoder(config: debertaConfig)
-
-        // Initialize span representation layer
-        self.spanRep = SpanRepLayer(
-            hiddenSize: hiddenSize,
-            maxWidth: maxWidth,
-            spanMode: .markerV0,
-            dropout: config.spanDropout
-        )
+        // The encoder shape comes from encoder_config/config.json when the model
+        // directory has one (see ExtractorConfig.load(fromDirectory:)).
+        self.encoder = DeBERTaEncoder(config: config.debertaConfig)
 
         // Initialize classifier: hidden → 2*hidden → 1
         self.classifier = createMLP(
-            inputDim: hiddenSize,
-            intermediateDims: [hiddenSize * 2],
+            inputDim: config.hiddenSize,
+            intermediateDims: [config.hiddenSize * 2],
             outputDim: 1,
             dropout: 0.0,
             activation: .relu,
             addLayerNorm: false
         )
-
-        // Initialize count prediction: hidden → 2*hidden → 20
-        self.countPred = createMLP(
-            inputDim: hiddenSize,
-            intermediateDims: [hiddenSize * 2],
-            outputDim: config.maxCount,
-            dropout: 0.0,
-            activation: .relu,
-            addLayerNorm: false
-        )
-
-        // Initialize count embedding
-        self.countEmbed = CountLSTMv2(
-            hiddenSize: hiddenSize,
-            maxCount: config.maxCount
-        )
+        super.init()
     }
+
+    /// Build the extractor subclass the configuration's `architecture` calls for.
+    public static func make(config: ExtractorConfig) -> Extractor {
+        switch config.architecture {
+        case .span: return SpanExtractor(config: config)
+        case .boundary: return BoundaryExtractor(config: config)
+        }
+    }
+
+    /// The decoder architecture this model implements.
+    public var architecture: ModelArchitecture { config.architecture }
 
     // MARK: - Encoder Forward
 
@@ -179,6 +143,143 @@ public class Extractor: Module {
     }
 
     var isCompiledEncoderEnabled: Bool { compiledEncode != nil }
+
+    // MARK: - Architecture hooks (overridden by the subclasses)
+
+    /// Load the non-encoder weights. The base loads the classifier; subclasses add their
+    /// heads and call `super`.
+    ///
+    /// - Parameter weights: Dictionary mapping parameter names to arrays (converted keys)
+    public func loadModelWeights(_ weights: [String: MLXArray]) {
+        // Converted weights use: classifier.layers.{0,1}.weight/bias
+        loadMLPWeights(classifier, weights: weights, prefix: "classifier.layers")
+    }
+
+    /// Keys a checkpoint must carry for this model to run on trained values, checked by
+    /// `loadWeights(..., strict: true)`. `exact` keys must be present verbatim; for every
+    /// `family` prefix at least one key must start with it.
+    ///
+    /// The base covers the encoder (per configured layer count) and the classifier.
+    func requiredWeightKeys() -> (exact: [String], families: [String]) {
+        var exact = [
+            "encoder.embeddings.word_embeddings.weight",
+            "encoder.embeddings.LayerNorm.weight",
+            "encoder.encoder.rel_embeddings.weight",
+            "encoder.encoder.LayerNorm.weight",
+        ]
+        for i in 0..<config.numHiddenLayers {
+            exact.append("encoder.encoder.layer.\(i).attention.self.query_proj.weight")
+            exact.append("encoder.encoder.layer.\(i).output.dense.weight")
+        }
+        return (exact, ["classifier.layers."])
+    }
+
+    /// Throw if the checkpoint is missing any critical key for this architecture.
+    func verifyRequiredWeights(_ weights: [String: MLXArray]) throws {
+        let required = requiredWeightKeys()
+        try Extractor.verify(weights, exact: required.exact, families: required.families)
+    }
+
+    static func verify(_ weights: [String: MLXArray], exact: [String], families: [String]) throws {
+        let present = Set(weights.keys)
+        var missing = exact.filter { !present.contains($0) }
+        missing += families
+            .filter { family in !present.contains { $0.hasPrefix(family) } }
+            .map { $0 + "*" }
+        guard missing.isEmpty else {
+            throw GLiNER2Error.weightLoadingFailed(
+                "strict load: \(missing.count) required weight(s) missing "
+                + "(would keep random init): \(missing.prefix(8).joined(separator: ", "))"
+                + (missing.count > 8 ? " …" : ""))
+        }
+    }
+
+    // MARK: - Shared helpers
+
+    func loadMLPWeights(_ mlp: Sequential, weights: [String: MLXArray], prefix: String) {
+        // MLP structure: Linear → activation → Linear
+        // Swift Sequential layers array: [0]=Linear, [1]=activation, [2]=Linear
+        //
+        // Converted keys number the Linear layers, not the Sequential slots
+        // (convert_weights.py remaps PyTorch indices):
+        //   classifier.0.weight → classifier.layers.0.weight (first Linear)
+        //   classifier.2.weight → classifier.layers.1.weight (second Linear; .3 on 2.5)
+        //
+        // So with prefix "classifier.layers", we look for .0 and .1
+
+        if let linear0 = mlp.layers[0] as? Linear {
+            updateLinearWeights(
+                linear0,
+                weight: weights["\(prefix).0.weight"],
+                bias: weights["\(prefix).0.bias"]
+            )
+        }
+
+        if let linear2 = mlp.layers[2] as? Linear {
+            updateLinearWeights(
+                linear2,
+                weight: weights["\(prefix).1.weight"],
+                bias: weights["\(prefix).1.bias"]
+            )
+        }
+    }
+}
+
+// MARK: - Span extractor (GLiNER2 v1)
+
+/// GLiNER2 v1 Extractor Model.
+///
+/// Architecture:
+/// - Encoder: DeBERTa-v3 with disentangled attention
+/// - Span representation: SpanMarkerV0
+/// - Classifier: MLP for classification tasks
+/// - Count prediction: MLP for count prediction
+/// - Count embedding: CountLSTMv2 for structure extraction
+public final class SpanExtractor: Extractor {
+    /// Maximum span width
+    public let maxWidth: Int
+
+    /// Span representation layer
+    public let spanRep: SpanRepLayer
+
+    /// Count prediction layer: hidden → 2*hidden → 20
+    public let countPred: Sequential
+
+    /// Count embedding module (CountLSTMv2 for gliner2-base-v1)
+    public let countEmbed: CountLSTMv2
+
+    /// Initialize Extractor from configuration
+    ///
+    /// - Parameter config: Model configuration
+    public override init(config: ExtractorConfig) {
+        self.maxWidth = config.maxWidth
+        let hiddenSize = config.hiddenSize
+
+        // Initialize span representation layer
+        self.spanRep = SpanRepLayer(
+            hiddenSize: hiddenSize,
+            maxWidth: config.maxWidth,
+            spanMode: .markerV0,
+            dropout: config.spanDropout
+        )
+
+        // Initialize count prediction: hidden → 2*hidden → 20
+        self.countPred = createMLP(
+            inputDim: hiddenSize,
+            intermediateDims: [hiddenSize * 2],
+            outputDim: config.maxCount,
+            dropout: 0.0,
+            activation: .relu,
+            addLayerNorm: false
+        )
+
+        // Initialize count embedding
+        self.countEmbed = CountLSTMv2(
+            hiddenSize: hiddenSize,
+            maxCount: config.maxCount
+        )
+        super.init(config: config)
+    }
 
     // MARK: - Span Representation
 
@@ -268,6 +369,44 @@ public class Extractor: Module {
 
         return scores
     }
+
+    // MARK: - Weights
+
+    /// Load GLiNER2 model weights (excluding encoder)
+    ///
+    /// - Parameter weights: Dictionary mapping parameter names to arrays
+    public override func loadModelWeights(_ weights: [String: MLXArray]) {
+        super.loadModelWeights(weights)
+
+        // Load span representation weights
+        // Converted weights use camelCase: spanRep.spanRepLayer.*
+        spanRep.loadWeights(weights, prefix: "spanRep")
+
+        // Load count prediction weights
+        // Converted weights use: countPred.layers.{0,1}.weight/bias
+        loadMLPWeights(countPred, weights: weights, prefix: "countPred.layers")
+
+        // Load count embedding weights
+        // Converted weights use: countEmbed.*
+        countEmbed.loadWeights(weights, prefix: "countEmbed")
+    }
+
+    override func requiredWeightKeys() -> (exact: [String], families: [String]) {
+        var required = super.requiredWeightKeys()
+        required.exact += [
+            "countEmbed.gru.weightIH",
+            "countEmbed.gru.weightHH",
+            "countEmbed.posEmbedding.weight",
+        ]
+        required.families += [
+            "spanRep.spanRepLayer.projectStart.",
+            "spanRep.spanRepLayer.projectEnd.",
+            "spanRep.spanRepLayer.outProject.",
+            "countPred.layers.",
+            "countEmbed.transformer.",
+        ]
+        return required
+    }
 }
 
 // MARK: - Span Info
@@ -336,6 +475,9 @@ public enum DTypePolicy: Sendable {
 /// — `fromPretrained` detects the `quantization` config block and loads it quantized. The
 /// pre-quantized directory is ~234 MB vs the fp16 398 MB and skips the fp16→int8 transient
 /// at load, so it is the better choice for a shipped int8-only app.
+///
+/// On a GLiNER2.5 model only the encoder is quantized; the boundary head (about 5 % of the
+/// parameters) stays at the checkpoint's float dtype.
 public enum QuantizationPolicy: Sendable, Equatable {
     case none
 
@@ -411,13 +553,18 @@ extension Extractor {
     /// Detect whether weights are in raw PyTorch format (snake_case keys)
     /// vs pre-converted format (camelCase keys from convert_weights.py).
     static func isRawPyTorchFormat(_ weights: [String: MLXArray]) -> Bool {
-        weights.keys.contains(where: { $0.hasPrefix("span_rep.") })
+        weights.keys.contains(where: { $0.hasPrefix("span_rep.") || $0.hasPrefix("boundary_head.") })
+    }
+
+    /// Whether a raw checkpoint is a GLiNER2.5 (boundary) one.
+    static func isRawBoundaryFormat(_ weights: [String: MLXArray]) -> Bool {
+        weights.keys.contains(where: { $0.hasPrefix("boundary_head.") })
     }
 
     // MARK: - Key Sanitization
 
-    /// Key mappings from raw PyTorch snake_case to converted camelCase format.
-    /// Ordered longest-prefix-first to avoid false prefix matches.
+    /// Key mappings from raw PyTorch snake_case to converted camelCase format (v1 span
+    /// checkpoints). Ordered longest-prefix-first to avoid false prefix matches.
     private static let keyMappings: [(String, String)] = [
         // Span representation
         ("span_rep.span_rep_layer.project_start", "spanRep.spanRepLayer.projectStart"),
@@ -444,21 +591,23 @@ extension Extractor {
 
     /// Remap raw PyTorch weight keys to the converted format expected by loadWeights methods.
     ///
-    /// If the weights are already in converted format (detected by absence of `span_rep.` keys),
-    /// they are returned unchanged. Encoder weights (`encoder.*`) pass through unmodified.
+    /// If the weights are already in converted format (detected by absence of `span_rep.`
+    /// / `boundary_head.` keys), they are returned unchanged. Encoder weights (`encoder.*`)
+    /// pass through unmodified.
     ///
     /// This eliminates the need for the Python `convert_weights.py` script.
     public static func sanitize(weights: [String: MLXArray]) -> [String: MLXArray] {
         guard isRawPyTorchFormat(weights) else { return weights }
+        let boundary = isRawBoundaryFormat(weights)
 
         var result: [String: MLXArray] = [:]
         for (key, value) in weights {
-            result[mapRawKey(key)] = value
+            result[boundary ? mapRawBoundaryKey(key) : mapRawKey(key)] = value
         }
         return result
     }
 
-    /// Map a single raw PyTorch key into the converted key space.
+    /// Map a single raw PyTorch key (v1 span checkpoint) into the converted key space.
     ///
     /// Encoder keys are identical in both spaces and pass through unchanged. Works for any
     /// suffix, so it also maps LoRA keys (`.lora_A` / `.lora_B`), not just `.weight`/`.bias`.
@@ -472,6 +621,45 @@ extension Extractor {
         return key
     }
 
+    /// Map a single raw PyTorch key of a GLiNER2.5 checkpoint into the converted key space.
+    ///
+    /// One rule, the same `scripts/convert_weights.py` applies: every path segment goes
+    /// `snake_case → camelCase`, integer segments are kept, and the two-Linear MLPs
+    /// (`classifier`, `film_output`, `mlp`) number their Linear layers 0/1 under `.layers.`
+    /// exactly as the v1 `classifier` conversion does (PyTorch index 0 → `layers.0`, the
+    /// second Linear at index 2 or 3 → `layers.1`).
+    static func mapRawBoundaryKey(_ key: String) -> String {
+        if key.hasPrefix("encoder.") { return key }
+        var segments = key.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+        for i in segments.indices where i > 0 && Int(segments[i]) != nil {
+            let owner = segments[i - 1]
+            if owner == "classifier" || owner == "film_output" || owner == "mlp" {
+                segments[i] = "layers." + (segments[i] == "0" ? "0" : "1")
+            }
+        }
+        return segments.map(camelCased).joined(separator: ".")
+    }
+
+    /// `shared_pool_scorer` → `sharedPoolScorer`; segments without underscores are kept.
+    static func camelCased(_ segment: String) -> String {
+        guard segment.contains("_") else { return segment }
+        let parts = segment.split(separator: "_", omittingEmptySubsequences: false).map(String.init)
+        guard let head = parts.first else { return segment }
+        return head + parts.dropFirst().map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined()
+    }
+
+    // MARK: - Strict-load key sets (v1 span defaults, kept for callers and tests)
+
+    /// Critical weight keys a v1 span checkpoint must carry (see `requiredWeightKeys()`).
+    static func requiredCriticalKeys() -> [String] {
+        SpanExtractor(config: ExtractorConfig()).requiredWeightKeys().exact
+    }
+
+    /// Throw if a v1 span checkpoint is missing any critical key.
+    static func verifyRequired(_ weights: [String: MLXArray]) throws {
+        try SpanExtractor(config: ExtractorConfig()).verifyRequiredWeights(weights)
+    }
+
     // MARK: - Weight Loading
 
     /// Load all weights from a single combined SafeTensors file.
@@ -482,58 +670,11 @@ extension Extractor {
     /// - Parameters:
     ///   - url: URL to model.safetensors (combined weights file)
     ///   - dtype: Floating-point policy to apply to the loaded weights
-    /// Critical weight keys that must be present for the model to run on trained values
-    /// rather than random init. Not the full 263-key set (which would be brittle across
-    /// dtypes and index ranges) — a curated set that covers every encoder layer plus each
-    /// head, so a truncated, wrong, or partial checkpoint is caught. The packed int8 layout
-    /// keeps these `.weight` keys (as uint32) and adds `.scales`/`.biases`, so the set is a
-    /// subset either way.
-    static func requiredCriticalKeys() -> [String] {
-        var keys = [
-            "encoder.embeddings.word_embeddings.weight",
-            "encoder.embeddings.LayerNorm.weight",
-            "encoder.encoder.rel_embeddings.weight",
-            "encoder.encoder.LayerNorm.weight",
-            "countEmbed.gru.weightIH",
-            "countEmbed.gru.weightHH",
-            "countEmbed.posEmbedding.weight",
-        ]
-        for i in 0..<12 {
-            keys.append("encoder.encoder.layer.\(i).attention.self.query_proj.weight")
-            keys.append("encoder.encoder.layer.\(i).output.dense.weight")
-        }
-        return keys
-    }
-
-    /// Prefix families whose indices vary; strict load only checks at least one is present.
-    private static let requiredKeyFamilies = [
-        "spanRep.spanRepLayer.projectStart.",
-        "spanRep.spanRepLayer.projectEnd.",
-        "spanRep.spanRepLayer.outProject.",
-        "classifier.layers.",
-        "countPred.layers.",
-        "countEmbed.transformer.",
-    ]
-
-    /// Throw if the checkpoint is missing any critical key. Off unless `strict` is requested.
-    static func verifyRequired(_ weights: [String: MLXArray]) throws {
-        let present = Set(weights.keys)
-        var missing = requiredCriticalKeys().filter { !present.contains($0) }
-        missing += requiredKeyFamilies
-            .filter { family in !present.contains { $0.hasPrefix(family) } }
-            .map { $0 + "*" }
-        guard missing.isEmpty else {
-            throw GLiNER2Error.weightLoadingFailed(
-                "strict load: \(missing.count) required weight(s) missing "
-                + "(would keep random init): \(missing.prefix(8).joined(separator: ", "))"
-                + (missing.count > 8 ? " …" : ""))
-        }
-    }
-
+    ///   - strict: Throw when a critical key is missing instead of keeping random init
     public func loadWeights(from url: URL, dtype: DTypePolicy = .auto, strict: Bool = false) throws {
         let rawWeights = try loadArrays(url: url)
         let sanitized = Extractor.sanitize(weights: rawWeights)
-        if strict { try Extractor.verifyRequired(sanitized) }
+        if strict { try verifyRequiredWeights(sanitized) }
 
         // A pre-quantized checkpoint carries packed weights, detectable by `.scales` keys.
         // Build the quantized structure BEFORE loading so the packed tensors land in
@@ -550,7 +691,7 @@ extension Extractor {
         // Load encoder weights (keys starting with "encoder.")
         encoder.loadWeights(weights, prefix: "encoder")
 
-        // Load model-specific weights (spanRep, classifier, countPred, countEmbed)
+        // Load model-specific weights (heads)
         loadModelWeights(weights)
         rebuildCompiledEncoder()
     }
@@ -574,27 +715,6 @@ extension Extractor {
         let encoderWeights = try dtype.apply(to: loadArrays(url: encoderWeightsUrl))
         encoder.loadWeights(encoderWeights, prefix: "encoder")
         rebuildCompiledEncoder()
-    }
-
-    /// Load GLiNER2 model weights (excluding encoder)
-    ///
-    /// - Parameter weights: Dictionary mapping parameter names to arrays
-    public func loadModelWeights(_ weights: [String: MLXArray]) {
-        // Load span representation weights
-        // Converted weights use camelCase: spanRep.spanRepLayer.*
-        spanRep.loadWeights(weights, prefix: "spanRep")
-
-        // Load classifier weights
-        // Converted weights use: classifier.layers.{0,1}.weight/bias
-        loadMLPWeights(classifier, weights: weights, prefix: "classifier.layers")
-
-        // Load count prediction weights
-        // Converted weights use: countPred.layers.{0,1}.weight/bias
-        loadMLPWeights(countPred, weights: weights, prefix: "countPred.layers")
-
-        // Load count embedding weights
-        // Converted weights use: countEmbed.*
-        countEmbed.loadWeights(weights, prefix: "countEmbed")
     }
 
     /// Load encoder weights separately
@@ -631,33 +751,5 @@ extension Extractor {
         encoder.loadWeights(weights, prefix: "encoder")
         loadModelWeights(weights)
         rebuildCompiledEncoder()
-    }
-
-    private func loadMLPWeights(_ mlp: Sequential, weights: [String: MLXArray], prefix: String) {
-        // MLP structure: Linear → ReLU → Linear
-        // Swift Sequential layers array: [0]=Linear, [1]=ReLU, [2]=Linear
-        //
-        // Weight mapping (convert_weights.py remaps PyTorch indices):
-        //   classifier.0.weight → classifier.layers.0.weight (first Linear)
-        //   classifier.2.weight → classifier.layers.1.weight (second Linear)
-        //
-        // So with prefix "classifier.layers", we look for .0 and .1
-
-        if let linear0 = mlp.layers[0] as? Linear {
-            updateLinearWeights(
-                linear0,
-                weight: weights["\(prefix).0.weight"],
-                bias: weights["\(prefix).0.bias"]
-            )
-        }
-
-        if let linear2 = mlp.layers[2] as? Linear {
-            // Note: converted weights use .1 for second linear, not .2
-            updateLinearWeights(
-                linear2,
-                weight: weights["\(prefix).1.weight"],
-                bias: weights["\(prefix).1.bias"]
-            )
-        }
     }
 }

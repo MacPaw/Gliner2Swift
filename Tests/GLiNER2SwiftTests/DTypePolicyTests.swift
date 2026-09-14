@@ -48,11 +48,11 @@ final class DTypePolicyTests: XCTestCase {
             poolingType: model.processor.tokenPooling
         )
 
-        let info = model.model.computeSpanRep(pooled)
+        let info = model.spanModel!.computeSpanRep(pooled)
         let markers = batch.schemaMarkerPositions[0][0]
         let embs = MLX.take(hidden, MLXArray(markers.map { Int32($0) }), axis: 0)
 
-        return model.model.computeSpanScores(spanInfo: info, schemaEmb: embs, predCount: 1)
+        return model.spanModel!.computeSpanScores(spanInfo: info, schemaEmb: embs, predCount: 1)
     }
 
     private func nerSchema() -> Schema {

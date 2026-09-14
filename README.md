@@ -27,7 +27,9 @@ Swift/MLX implementation of [GLiNER2](https://github.com/fastino-ai/gliner2) - a
 
 ## Features
 
-- Named Entity Recognition (NER)
+- GLiNER2 (span) and GLiNER2.5 (boundary) checkpoints behind one API, with the
+  architecture picked from the checkpoint's `config.json`
+- Named Entity Recognition (NER) — with GLiNER2.5, entities of any length
 - Text Classification (with optional prompts, label descriptions, and few-shot examples)
 - Structured Data Extraction (JSON schemas, including the `name::dtype::[a|b]::desc` field-spec form)
 - Relation Extraction
@@ -86,9 +88,20 @@ if let entities = result["entities"] as? [String: [Any]] {
 
 ## Available Models
 
-| Model | Parameters | HuggingFace ID |
-|-------|------------|----------------|
-| Base | 205M | `fastino/gliner2-base-v1` |
+| Model | Architecture | Parameters | HuggingFace ID |
+|-------|--------------|------------|----------------|
+| GLiNER2 base | span | 205M | `fastino/gliner2-base-v1` |
+| GLiNER2.5 small | boundary | 74M | `fastino/gliner2.5-small-v1` |
+| GLiNER2.5 base | boundary | 194M | `fastino/gliner2.5-base-v1` |
+| GLiNER2.5 multilingual | boundary | 287M | `fastino/gliner2.5-multi-v1` |
+
+Every row loads straight from its HuggingFace repository (or from a directory produced by
+`scripts/convert_weights.py`, which also writes fp16 and int8 variants). GLiNER2.5 models
+decode entities, classifications, JSON structures (legacy single-instance and record mode —
+`Schema.structure(name, mode: "natural" | "latent" | "anchorless")`, which `extractJson`
+uses by default on a 2.5 checkpoint), choice fields and relations with prediction parity
+against `gliner2` 2.0.0 (`BoundaryPredictionParityTests`, 70 / 69 / 70 cases for small /
+base / multi).
 
 ## API Reference
 
@@ -173,10 +186,22 @@ This produces numerically identical results to Python's `model.load_adapter()` +
 
 GLiNER2Swift is a direct port of the Python GLiNER2 implementation, achieving numerical parity with the reference implementation:
 
-- **Encoder**: DeBERTa v3 with disentangled attention
-- **Span Marker**: MLP-based span representation
-- **Count LSTM**: For predicting entity counts
-- **Downscaled Transformer**: For schema embedding
+- **Encoder**: DeBERTa v3 with disentangled attention (shared by both architectures)
+- GLiNER2 (span):
+  - **Span Marker**: MLP-based span representation
+  - **Count LSTM**: For predicting entity counts
+  - **Downscaled Transformer**: For schema embedding
+- GLiNER2.5 (boundary, `Sources/GLiNER2Swift/Model/Boundary/`):
+  - **Boundary encoder**: one state per word boundary, windowed self-attention + SwiGLU
+  - **Query head**: start / end / inside marginals per query
+  - **Shared candidate pool**: 192 document-level spans, selected with exact
+    integer sort keys so the pool matches PyTorch's stable sorts
+  - **Pool scorer**: FiLM-conditioned reranker with span content and inside evidence,
+    plus a per-query abstention logit
+  - **Relation scorer**: typed, capped head × tail pairs over the entity candidates
+  - **Record head**: natural / latent / anchorless instance formation with null-aware
+    field assignment (Hungarian assignment for exclusive scalar fields)
+
 
 ## Performance
 
@@ -187,13 +212,31 @@ On Apple Silicon (M3 Pro, fp16):
 Opt-in int8 encoder quantization roughly halves steady-state memory (~415 MB → ~253 MB)
 for a small accuracy trade-off; pass `quantization: .int8` to `fromPretrained`.
 
+GLiNER2.5 (same machine, fp16, p50 over 100 runs; details in `benchmarks/BASELINE.md`):
+
+| model | single sentence | ~450-word document | 32-text batch | active memory |
+|---|---|---|---|---|
+| gliner2.5-small-v1 | 20.5 ms | 21.8 ms | 97 ms | 148 MB |
+| gliner2.5-base-v1 | 20.5 ms | 29.1 ms | 92 ms | 376 MB |
+| gliner2.5-base-v1, int8 encoder | 19.2 ms | 27.5 ms | 87 ms | 214 MB |
+| gliner2.5-multi-v1 | 20.5 ms | 37.1 ms | 105 ms | 554 MB |
+
+Short inputs cost the same as GLiNER2; long documents and batches are 1.4–2.3× faster because
+the boundary head replaces the span grid and its per-schema readbacks. The first call after
+loading is slower than GLiNER2 (about 1.2 s vs 0.5 s) while Metal specialises the head's
+kernels.
+
 ## Work in Progress
 
 This is an active port of the [Python GLiNER2](https://github.com/fastino-ai/gliner2) implementation. Inference is at full prediction parity with the reference. The following are **not yet implemented**:
 
 - **Training loop** - Fine-tuning and training from scratch are not yet supported
 - **PyTorch `.bin` checkpoints** - Only safetensors weights are loadable (MLX cannot read pickle)
-- **Additional GLiNER models** - Currently only `deberta-v3-base` is supported; other model variants are not yet available
+- **GLiNER2.5 extras** - entity attributes (`AttributeGroup`), the constrained `Classifier`
+  and the `JointIE` facade are not ported (pure post-processing over the same heads)
+- **GLiNER2 v1 variants** - `gliner2-large-v1` and `gliner2-multi-v1` need the `count_lstm`
+  counting layer, which is not wired on the span path yet (the encoder shape is read from
+  `encoder_config/config.json` already)
 
 Contributions and PRs are welcome!
 

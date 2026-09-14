@@ -1,0 +1,37 @@
+{
+  "model": "fastino/gliner2.5-multi-v1",
+  "revision": "aaecfe45db1d828c963717054ccb868e8ad1f1d5",
+  "generator": "scripts/generate_boundary_fixtures.py",
+  "versions": {
+    "python": "3.11.15",
+    "torch": "2.14.0",
+    "transformers": "4.57.6",
+    "gliner2": "2.0.0",
+    "safetensors": "0.8.0",
+    "numpy": "2.4.6",
+    "platform": "macOS-26.6.2-arm64-arm-64bit"
+  },
+  "cases": {
+    "multi_fr": {
+      "kind": "standard",
+      "files": {
+        "multi_fr.safetensors": 764039,
+        "multi_fr.json": 18588
+      }
+    },
+    "multi_de": {
+      "kind": "standard",
+      "files": {
+        "multi_de.safetensors": 769872,
+        "multi_de.json": 19652
+      }
+    },
+    "multi_decomposed": {
+      "kind": "standard",
+      "files": {
+        "multi_decomposed.safetensors": 766226,
+        "multi_decomposed.json": 19283
+      }
+    }
+  }
+}

@@ -56,12 +56,12 @@ final class PredictionParityTests: XCTestCase {
 
     // MARK: - Corpus model
 
-    private struct Corpus: Decodable {
+    struct Corpus: Decodable {
         let model: String
         let cases: [Case]
     }
 
-    private struct Case: Decodable {
+    struct Case: Decodable {
         let name: String
         let text: String
         let threshold: Double
@@ -70,7 +70,7 @@ final class PredictionParityTests: XCTestCase {
         let expected: JSONValue
     }
 
-    private struct SchemaSpec: Decodable {
+    struct SchemaSpec: Decodable {
         struct Classification: Decodable {
             let task: String
             let labels: [String]
@@ -88,19 +88,35 @@ final class PredictionParityTests: XCTestCase {
             let choices: [String]?
             let description: String?
             let threshold: Double?
+            let cardinality: String?
+            let exclusive: Bool?
         }
         struct Structure: Decodable {
             let name: String
             let fields: [Field]
+            /// GLiNER 2.5 record mode (`natural` / `latent` / `anchorless`).
+            let mode: String?
+            let anchor: String?
+            let occurrencePolicy: String?
+            enum CodingKeys: String, CodingKey {
+                case name, fields, mode, anchor
+                case occurrencePolicy = "occurrence_policy"
+            }
         }
         /// Either `["person", ...]` or `{"person": "description", ...}`.
         let entities: EntitySpec?
+        /// Declaration order of a dictionary-form `entities` (JSON objects lose it).
+        let entityOrder: [String]?
         let classification: Classification?
         let structures: [Structure]?
         let relations: [String]?
+        enum CodingKeys: String, CodingKey {
+            case entities, classification, structures, relations
+            case entityOrder = "entity_order"
+        }
     }
 
-    private enum EntitySpec: Decodable {
+    enum EntitySpec: Decodable {
         case list([String])
         case described([String: String])
 
@@ -132,25 +148,33 @@ final class PredictionParityTests: XCTestCase {
 
     // MARK: - Schema construction (mirrors generate_prediction_corpus.py::build_schema)
 
-    private func buildSchema(_ spec: SchemaSpec, model: GLiNER2) -> Schema {
-        var schema = model.createSchema()
+    static func buildSchema(_ spec: SchemaSpec) -> Schema {
+        var schema = Schema()
 
         if let entities = spec.entities {
             switch entities {
             case .list(let names):          schema = schema.entities(names)
-            case .described(let described): schema = schema.entities(described)
+            case .described(let described):
+                if let order = spec.entityOrder, Set(order) == Set(described.keys) {
+                    schema = schema.entities(order, descriptions: described)
+                } else {
+                    schema = schema.entities(described)
+                }
             }
         }
 
         for structure in spec.structures ?? [] {
-            var builder = schema.structure(structure.name)
+            var builder = schema.structure(structure.name, mode: structure.mode, anchor: structure.anchor,
+                                           occurrencePolicy: structure.occurrencePolicy)
             for field in structure.fields {
                 builder = builder.field(
                     field.name,
                     dtype: field.dtype ?? "list",
                     choices: field.choices,
                     description: field.description,
-                    threshold: field.threshold.map { Float($0) }
+                    threshold: field.threshold.map { Float($0) },
+                    cardinality: field.cardinality,
+                    exclusive: field.exclusive ?? false
                 )
             }
             schema = builder.done()
@@ -206,7 +230,7 @@ final class PredictionParityTests: XCTestCase {
         var unexpectedPasses: [String] = []  // tagged but now passing -> update the list
 
         for testCase in corpus.cases {
-            let schema = buildSchema(testCase.schema, model: model)
+            let schema = Self.buildSchema(testCase.schema)
             let actual = model.extract(
                 text: testCase.text,
                 schema: schema,

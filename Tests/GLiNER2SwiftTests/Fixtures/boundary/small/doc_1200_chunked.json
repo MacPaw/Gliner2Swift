@@ -1,0 +1,1525 @@
+{
+  "case": "doc_1200_chunked",
+  "kind": "long",
+  "model": "fastino/gliner2.5-small-v1",
+  "revision": "cab1bddfd30fda7b803a4691c41f90378a2d517a",
+  "generator": "scripts/generate_boundary_fixtures.py",
+  "versions": {
+    "python": "3.11.15",
+    "torch": "2.14.0",
+    "transformers": "4.57.6",
+    "gliner2": "2.0.0",
+    "safetensors": "0.8.0",
+    "numpy": "2.4.6",
+    "platform": "macOS-26.6.2-arm64-arm-64bit"
+  },
+  "text": "On Monday morning, the European Commission announced in Brussels that it had reached a preliminary agreement with the government of Norway on a new framework for cross-border energy trading. Commission President Ursula von der Leyen told reporters that the deal, which had been negotiated over eighteen months by teams led by Kadri Simson and Norwegian minister Terje Aasland, would take effect on January 1, 2027. The announcement came two days after the International Energy Agency published its annual outlook in Paris, warning that demand for electricity in Northern Europe could rise by twelve percent before 2030. Analysts at Goldman Sachs and Morgan Stanley said the agreement would benefit Equinor and Statkraft, while executives at Siemens Energy in Munich welcomed the news. In Oslo, Prime Minister Jonas Gahr Støre described the framework as a milestone for the North Sea region. He was joined at the press conference by Anniken Huitfeldt and by Espen Barth Eide, who had returned from talks at the United Nations in New York on Friday. Meanwhile, in Washington, Senator Lisa Murkowski said the United States Department of Energy would study the European model during hearings scheduled for March 14. Reporters from Reuters, Bloomberg and the Financial Times noted that the agreement still required approval from the European Parliament in Strasbourg, where the vote is expected in late April. Opposition to the deal has been voiced by Marine Le Pen in France and by members of the Alternative für Deutschland in Berlin, who argue that the framework favours Norwegian exporters. Supporters, including German Chancellor Friedrich Merz and Dutch Prime Minister Dick Schoof, countered that the deal would lower prices for consumers in Amsterdam, Hamburg and Copenhagen. The World Bank, in a statement issued from its headquarters on Tuesday, said that similar arrangements could be replicated in Southeast Asia, pointing to ongoing discussions between Singapore and Malaysia. Shares of Ørsted rose four percent on the Copenhagen exchange after the announcement, and Vestas Wind Systems gained three percent. In London, Ofgem chief executive Jonathan Brearley said the United Kingdom would open its own consultation on May 2, noting that National Grid had already begun feasibility studies with TenneT in the Netherlands. The Norwegian Sovereign Wealth Fund, managed by Nicolai Tangen, declined to comment. Later in the week, Greenpeace and Friends of the Earth organised demonstrations outside the Berlaymont building, demanding stronger protections for fisheries in the Skagerrak. A spokesperson for the Commission, Arianna Podestà, confirmed that an environmental review led by scientists from the University of Bergen and ETH Zurich would be completed by September 30, 2026, before any interconnector construction begins near Stavanger or Aberdeen. The following Thursday, Apple chief executive Tim Cook opened the company's annual developer conference in Cupertino with a keynote that lasted nearly two hours. Joined on stage by Craig Federighi and Johny Srouji, Cook unveiled a new generation of laptops built around chips manufactured by TSMC in Hsinchu and assembled by Foxconn in Zhengzhou. Analysts from Morgan Stanley and Wedbush Securities, who had travelled from New York for the event, said the announcement exceeded expectations. Microsoft responded the same afternoon: Satya Nadella posted from Redmond that Windows would receive a comparable update before the Consumer Electronics Show in Las Vegas in January. In Mountain View, Sundar Pichai told employees at Google that Android engineers led by Hiroshi Lockheimer had been working with Samsung in Suwon on similar features since February 2026. Shares of NVIDIA, whose founder Jensen Huang had appeared at a rival event in Taipei on Wednesday, slipped two percent, while AMD, led by Lisa Su in Santa Clara, was largely unchanged. Later that evening, the Wall Street Journal reported that the Federal Trade Commission had opened an inquiry into app-store fees, citing complaints filed by Spotify in Stockholm and by Epic Games in Cary, North Carolina. Lina Khan's successor at the agency, Andrew Ferguson, declined to confirm the report during a hearing in Washington on Friday, though Senator Amy Klobuchar of Minnesota pressed him repeatedly. Meanwhile in Europe, Margrethe Vestager's former office at the European Commission published guidance under the Digital Markets Act that would apply to Meta, Amazon and ByteDance from July 1. Mark Zuckerberg, speaking from Menlo Park, called the guidance workable, and Amazon's Andy Jassy said from Seattle that the company would comply. Reporters from TechCrunch, The Verge and Wired noted that Tesla and SpaceX were absent from the list, a point Elon Musk celebrated on X from Austin. By Sunday, the Nikkei in Tokyo had reported that Sony and Nintendo were considering their own joint response, and the Financial Times said that Arm Holdings in Cambridge would brief investors on Monday, March 30. Across the Atlantic, the weekend belonged to sport. On Saturday afternoon at Wembley Stadium in London, Arsenal defeated Manchester City two goals to one in the FA Cup final, with Bukayo Saka scoring the winner in the eighty-seventh minute. Manager Mikel Arteta praised goalkeeper David Raya, while Pep Guardiola conceded that his side had been second best. Earlier in the day, in Paris, Novak Djokovic and Carlos Alcaraz advanced to the semi-finals at Roland Garros, setting up a match on Friday, June 5. In Madrid, Real Madrid confirmed that Kylian Mbappé would miss the Champions League final in Munich on May 31 after a training injury at Valdebebas. Across the ocean, the Boston Celtics beat the Denver Nuggets in Game Six at TD Garden, and Jayson Tatum was named the most valuable player of the series ahead of the finals against the Oklahoma City Thunder. In baseball, Shohei Ohtani hit his twentieth home run of the season for the Los Angeles Dodgers at Dodger Stadium, a game attended by Mayor Karen Bass and by actor Tom Hanks. The Olympic Committee, meeting in Lausanne, announced that Brisbane would host a test event in October, and IOC President Kirsty Coventry said that talks with Riyadh over the 2036 Games would continue in Doha. Meanwhile, the Cannes Film Festival closed on Sunday with the Palme d'Or awarded to a film by Céline Sciamma, presented by jury president Cate Blanchett. Netflix and Warner Bros. Discovery were reported by Variety to be bidding for distribution rights, and Amazon MGM Studios in Culver City was said to be preparing an offer. On Monday morning, the Metropolitan Museum of Art in New York opened an exhibition of works loaned by the Louvre and by the Uffizi in Florence, with curator Max Hollein thanking donors including the Ford Foundation and Bloomberg Philanthropies. Attendance in the first week, according to the New York Times, exceeded one hundred thousand visitors, the strongest opening since 2019.",
+  "word_count": 1232,
+  "entity_types": [
+    "person",
+    "location",
+    "organization"
+  ],
+  "schema": {
+    "json_structures": [],
+    "classifications": [],
+    "entities": {
+      "person": "",
+      "location": "",
+      "organization": ""
+    },
+    "relations": [],
+    "json_descriptions": {},
+    "entity_descriptions": {},
+    "relation_descriptions": {}
+  },
+  "threshold": 0.5,
+  "chunk_size": 384,
+  "chunk_overlap": 64,
+  "chunks": [
+    {
+      "text": "On Monday morning, the European Commission announced in Brussels that it had reached a preliminary agreement with the government of Norway on a new framework for cross-border energy trading. Commission President Ursula von der Leyen told reporters that the deal, which had been negotiated over eighteen months by teams led by Kadri Simson and Norwegian minister Terje Aasland, would take effect on January 1, 2027. The announcement came two days after the International Energy Agency published its annual outlook in Paris, warning that demand for electricity in Northern Europe could rise by twelve percent before 2030. Analysts at Goldman Sachs and Morgan Stanley said the agreement would benefit Equinor and Statkraft, while executives at Siemens Energy in Munich welcomed the news. In Oslo, Prime Minister Jonas Gahr Støre described the framework as a milestone for the North Sea region. He was joined at the press conference by Anniken Huitfeldt and by Espen Barth Eide, who had returned from talks at the United Nations in New York on Friday. Meanwhile, in Washington, Senator Lisa Murkowski said the United States Department of Energy would study the European model during hearings scheduled for March 14. Reporters from Reuters, Bloomberg and the Financial Times noted that the agreement still required approval from the European Parliament in Strasbourg, where the vote is expected in late April. Opposition to the deal has been voiced by Marine Le Pen in France and by members of the Alternative für Deutschland in Berlin, who argue that the framework favours Norwegian exporters. Supporters, including German Chancellor Friedrich Merz and Dutch Prime Minister Dick Schoof, countered that the deal would lower prices for consumers in Amsterdam, Hamburg and Copenhagen. The World Bank, in a statement issued from its headquarters on Tuesday, said that similar arrangements could be replicated in Southeast Asia, pointing to ongoing discussions between Singapore and Malaysia. Shares of Ørsted rose four percent on the Copenhagen exchange after the announcement, and Vestas Wind Systems gained three percent. In London, Ofgem chief executive Jonathan Brearley said the United Kingdom would open its own consultation on May 2, noting that National",
+      "start_char": 0,
+      "end_char": 2253,
+      "start_word": 0,
+      "end_word": 384
+    },
+    {
+      "text": "similar arrangements could be replicated in Southeast Asia, pointing to ongoing discussions between Singapore and Malaysia. Shares of Ørsted rose four percent on the Copenhagen exchange after the announcement, and Vestas Wind Systems gained three percent. In London, Ofgem chief executive Jonathan Brearley said the United Kingdom would open its own consultation on May 2, noting that National Grid had already begun feasibility studies with TenneT in the Netherlands. The Norwegian Sovereign Wealth Fund, managed by Nicolai Tangen, declined to comment. Later in the week, Greenpeace and Friends of the Earth organised demonstrations outside the Berlaymont building, demanding stronger protections for fisheries in the Skagerrak. A spokesperson for the Commission, Arianna Podestà, confirmed that an environmental review led by scientists from the University of Bergen and ETH Zurich would be completed by September 30, 2026, before any interconnector construction begins near Stavanger or Aberdeen. The following Thursday, Apple chief executive Tim Cook opened the company's annual developer conference in Cupertino with a keynote that lasted nearly two hours. Joined on stage by Craig Federighi and Johny Srouji, Cook unveiled a new generation of laptops built around chips manufactured by TSMC in Hsinchu and assembled by Foxconn in Zhengzhou. Analysts from Morgan Stanley and Wedbush Securities, who had travelled from New York for the event, said the announcement exceeded expectations. Microsoft responded the same afternoon: Satya Nadella posted from Redmond that Windows would receive a comparable update before the Consumer Electronics Show in Las Vegas in January. In Mountain View, Sundar Pichai told employees at Google that Android engineers led by Hiroshi Lockheimer had been working with Samsung in Suwon on similar features since February 2026. Shares of NVIDIA, whose founder Jensen Huang had appeared at a rival event in Taipei on Wednesday, slipped two percent, while AMD, led by Lisa Su in Santa Clara, was largely unchanged. Later that evening, the Wall Street Journal reported that the Federal Trade Commission had opened an inquiry into app-store fees, citing complaints filed by Spotify in Stockholm and by Epic Games in Cary, North Carolina. Lina",
+      "start_char": 1860,
+      "end_char": 4131,
+      "start_word": 320,
+      "end_word": 704
+    },
+    {
+      "text": "in Taipei on Wednesday, slipped two percent, while AMD, led by Lisa Su in Santa Clara, was largely unchanged. Later that evening, the Wall Street Journal reported that the Federal Trade Commission had opened an inquiry into app-store fees, citing complaints filed by Spotify in Stockholm and by Epic Games in Cary, North Carolina. Lina Khan's successor at the agency, Andrew Ferguson, declined to confirm the report during a hearing in Washington on Friday, though Senator Amy Klobuchar of Minnesota pressed him repeatedly. Meanwhile in Europe, Margrethe Vestager's former office at the European Commission published guidance under the Digital Markets Act that would apply to Meta, Amazon and ByteDance from July 1. Mark Zuckerberg, speaking from Menlo Park, called the guidance workable, and Amazon's Andy Jassy said from Seattle that the company would comply. Reporters from TechCrunch, The Verge and Wired noted that Tesla and SpaceX were absent from the list, a point Elon Musk celebrated on X from Austin. By Sunday, the Nikkei in Tokyo had reported that Sony and Nintendo were considering their own joint response, and the Financial Times said that Arm Holdings in Cambridge would brief investors on Monday, March 30. Across the Atlantic, the weekend belonged to sport. On Saturday afternoon at Wembley Stadium in London, Arsenal defeated Manchester City two goals to one in the FA Cup final, with Bukayo Saka scoring the winner in the eighty-seventh minute. Manager Mikel Arteta praised goalkeeper David Raya, while Pep Guardiola conceded that his side had been second best. Earlier in the day, in Paris, Novak Djokovic and Carlos Alcaraz advanced to the semi-finals at Roland Garros, setting up a match on Friday, June 5. In Madrid, Real Madrid confirmed that Kylian Mbappé would miss the Champions League final in Munich on May 31 after a training injury at Valdebebas. Across the ocean, the Boston Celtics beat the Denver Nuggets in Game Six at TD Garden, and Jayson Tatum was named the most valuable player of the series ahead of the finals",
+      "start_char": 3796,
+      "end_char": 5847,
+      "start_word": 640,
+      "end_word": 1024
+    },
+    {
+      "text": "June 5. In Madrid, Real Madrid confirmed that Kylian Mbappé would miss the Champions League final in Munich on May 31 after a training injury at Valdebebas. Across the ocean, the Boston Celtics beat the Denver Nuggets in Game Six at TD Garden, and Jayson Tatum was named the most valuable player of the series ahead of the finals against the Oklahoma City Thunder. In baseball, Shohei Ohtani hit his twentieth home run of the season for the Los Angeles Dodgers at Dodger Stadium, a game attended by Mayor Karen Bass and by actor Tom Hanks. The Olympic Committee, meeting in Lausanne, announced that Brisbane would host a test event in October, and IOC President Kirsty Coventry said that talks with Riyadh over the 2036 Games would continue in Doha. Meanwhile, the Cannes Film Festival closed on Sunday with the Palme d'Or awarded to a film by Céline Sciamma, presented by jury president Cate Blanchett. Netflix and Warner Bros. Discovery were reported by Variety to be bidding for distribution rights, and Amazon MGM Studios in Culver City was said to be preparing an offer. On Monday morning, the Metropolitan Museum of Art in New York opened an exhibition of works loaned by the Louvre and by the Uffizi in Florence, with curator Max Hollein thanking donors including the Ford Foundation and Bloomberg Philanthropies. Attendance in the first week, according to the New York Times, exceeded one hundred thousand visitors, the strongest opening since 2019.",
+      "start_char": 5518,
+      "end_char": 6975,
+      "start_word": 960,
+      "end_word": 1232
+    }
+  ],
+  "api": "extract_entities_long(text, entity_types, threshold, chunk_size=384, chunk_overlap=64, include_confidence=True, include_spans=True) = batch_extract_long -> split_text_into_chunks + batch_extract(max_len=384) + merge_chunk_results",
+  "expected_chunk_results": [
+    {
+      "entities": {
+        "person": [
+          {
+            "text": "Ursula von der Leyen",
+            "confidence": 0.9952242374420166,
+            "start": 212,
+            "end": 232
+          },
+          {
+            "text": "Jonas Gahr Støre",
+            "confidence": 0.9938406944274902,
+            "start": 809,
+            "end": 825
+          },
+          {
+            "text": "Jonathan Brearley",
+            "confidence": 0.9874207377433777,
+            "start": 2149,
+            "end": 2166
+          },
+          {
+            "text": "Lisa Murkowski",
+            "confidence": 0.9855523705482483,
+            "start": 1082,
+            "end": 1096
+          },
+          {
+            "text": "Friedrich Merz",
+            "confidence": 0.9834024906158447,
+            "start": 1630,
+            "end": 1644
+          },
+          {
+            "text": "Terje Aasland",
+            "confidence": 0.9815007448196411,
+            "start": 362,
+            "end": 375
+          },
+          {
+            "text": "Anniken Huitfeldt",
+            "confidence": 0.9766275882720947,
+            "start": 932,
+            "end": 949
+          },
+          {
+            "text": "Kadri Simson",
+            "confidence": 0.9692443013191223,
+            "start": 326,
+            "end": 338
+          },
+          {
+            "text": "Espen Barth Eide",
+            "confidence": 0.9582703709602356,
+            "start": 957,
+            "end": 973
+          }
+        ],
+        "location": [
+          {
+            "text": "London",
+            "confidence": 0.9421537518501282,
+            "start": 2119,
+            "end": 2125
+          },
+          {
+            "text": "Oslo",
+            "confidence": 0.9354921579360962,
+            "start": 788,
+            "end": 792
+          },
+          {
+            "text": "Paris",
+            "confidence": 0.9204970002174377,
+            "start": 516,
+            "end": 521
+          },
+          {
+            "text": "New York",
+            "confidence": 0.913484513759613,
+            "start": 1028,
+            "end": 1036
+          },
+          {
+            "text": "Brussels",
+            "confidence": 0.9120861887931824,
+            "start": 56,
+            "end": 64
+          },
+          {
+            "text": "Copenhagen",
+            "confidence": 0.9059543013572693,
+            "start": 2026,
+            "end": 2036
+          },
+          {
+            "text": "Copenhagen",
+            "confidence": 0.8949188590049744,
+            "start": 1766,
+            "end": 1776
+          },
+          {
+            "text": "Amsterdam",
+            "confidence": 0.8931787610054016,
+            "start": 1743,
+            "end": 1752
+          },
+          {
+            "text": "Munich",
+            "confidence": 0.8919703960418701,
+            "start": 759,
+            "end": 765
+          },
+          {
+            "text": "Southeast Asia",
+            "confidence": 0.873978853225708,
+            "start": 1904,
+            "end": 1918
+          },
+          {
+            "text": "Berlin",
+            "confidence": 0.873517632484436,
+            "start": 1524,
+            "end": 1530
+          },
+          {
+            "text": "Strasbourg",
+            "confidence": 0.8668767213821411,
+            "start": 1351,
+            "end": 1361
+          },
+          {
+            "text": "France",
+            "confidence": 0.8380675911903381,
+            "start": 1464,
+            "end": 1470
+          }
+        ],
+        "organization": [
+          {
+            "text": "United States Department of Energy",
+            "confidence": 0.8406656980514526,
+            "start": 1106,
+            "end": 1140
+          },
+          {
+            "text": "International Energy Agency",
+            "confidence": 0.8351283073425293,
+            "start": 456,
+            "end": 483
+          },
+          {
+            "text": "World Bank",
+            "confidence": 0.8014705181121826,
+            "start": 1782,
+            "end": 1792
+          },
+          {
+            "text": "Siemens Energy",
+            "confidence": 0.7890618443489075,
+            "start": 741,
+            "end": 755
+          },
+          {
+            "text": "Reuters",
+            "confidence": 0.7354905605316162,
+            "start": 1227,
+            "end": 1234
+          }
+        ]
+      }
+    },
+    {
+      "entities": {
+        "person": [
+          {
+            "text": "Jonathan Brearley",
+            "confidence": 0.9909662008285522,
+            "start": 289,
+            "end": 306
+          },
+          {
+            "text": "Jensen Huang",
+            "confidence": 0.9907739758491516,
+            "start": 1893,
+            "end": 1905
+          },
+          {
+            "text": "Tim Cook",
+            "confidence": 0.988955557346344,
+            "start": 1046,
+            "end": 1054
+          },
+          {
+            "text": "Lisa Su",
+            "confidence": 0.9812335968017578,
+            "start": 1999,
+            "end": 2006
+          },
+          {
+            "text": "Hiroshi Lockheimer",
+            "confidence": 0.9797257781028748,
+            "start": 1762,
+            "end": 1780
+          },
+          {
+            "text": "Nicolai Tangen",
+            "confidence": 0.9785255789756775,
+            "start": 517,
+            "end": 531
+          },
+          {
+            "text": "Sundar Pichai",
+            "confidence": 0.9754718542098999,
+            "start": 1693,
+            "end": 1706
+          },
+          {
+            "text": "Satya Nadella",
+            "confidence": 0.9729602336883545,
+            "start": 1532,
+            "end": 1545
+          },
+          {
+            "text": "Arianna Podestà",
+            "confidence": 0.9690342545509338,
+            "start": 765,
+            "end": 780
+          },
+          {
+            "text": "Craig Federighi",
+            "confidence": 0.9679627418518066,
+            "start": 1181,
+            "end": 1196
+          },
+          {
+            "text": "Johny Srouji",
+            "confidence": 0.9663487672805786,
+            "start": 1201,
+            "end": 1213
+          }
+        ],
+        "location": [
+          {
+            "text": "Taipei",
+            "confidence": 0.9577235579490662,
+            "start": 1939,
+            "end": 1945
+          },
+          {
+            "text": "Cupertino",
+            "confidence": 0.9535942077636719,
+            "start": 1107,
+            "end": 1116
+          },
+          {
+            "text": "London",
+            "confidence": 0.9491921663284302,
+            "start": 259,
+            "end": 265
+          },
+          {
+            "text": "Suwon",
+            "confidence": 0.9471690058708191,
+            "start": 1814,
+            "end": 1819
+          },
+          {
+            "text": "Stockholm",
+            "confidence": 0.9442911744117737,
+            "start": 2214,
+            "end": 2223
+          },
+          {
+            "text": "Hsinchu",
+            "confidence": 0.9414079189300537,
+            "start": 1300,
+            "end": 1307
+          },
+          {
+            "text": "Santa Clara",
+            "confidence": 0.9338347911834717,
+            "start": 2010,
+            "end": 2021
+          },
+          {
+            "text": "Netherlands",
+            "confidence": 0.8893248438835144,
+            "start": 456,
+            "end": 467
+          },
+          {
+            "text": "Aberdeen",
+            "confidence": 0.8789047598838806,
+            "start": 990,
+            "end": 998
+          },
+          {
+            "text": "Stavanger",
+            "confidence": 0.8726328015327454,
+            "start": 977,
+            "end": 986
+          },
+          {
+            "text": "Skagerrak",
+            "confidence": 0.8613913655281067,
+            "start": 719,
+            "end": 728
+          },
+          {
+            "text": "Cary, North Carolina",
+            "confidence": 0.7652834057807922,
+            "start": 2245,
+            "end": 2265
+          }
+        ],
+        "organization": [
+          {
+            "text": "TenneT",
+            "confidence": 0.820549726486206,
+            "start": 442,
+            "end": 448
+          },
+          {
+            "text": "Greenpeace",
+            "confidence": 0.751774251461029,
+            "start": 573,
+            "end": 583
+          }
+        ]
+      }
+    },
+    {
+      "entities": {
+        "person": [
+          {
+            "text": "Lisa Su",
+            "confidence": 0.9751426577568054,
+            "start": 63,
+            "end": 70
+          },
+          {
+            "text": "Novak Djokovic",
+            "confidence": 0.9679806232452393,
+            "start": 1612,
+            "end": 1626
+          },
+          {
+            "text": "Jayson Tatum",
+            "confidence": 0.9677779078483582,
+            "start": 1970,
+            "end": 1982
+          },
+          {
+            "text": "Kylian Mbappé",
+            "confidence": 0.9592207670211792,
+            "start": 1768,
+            "end": 1781
+          },
+          {
+            "text": "Elon Musk",
+            "confidence": 0.9565722942352295,
+            "start": 972,
+            "end": 981
+          },
+          {
+            "text": "Lina Khan",
+            "confidence": 0.9486358761787415,
+            "start": 331,
+            "end": 340
+          },
+          {
+            "text": "Andy Jassy",
+            "confidence": 0.9369643330574036,
+            "start": 802,
+            "end": 812
+          },
+          {
+            "text": "Andrew Ferguson",
+            "confidence": 0.9312554001808167,
+            "start": 368,
+            "end": 383
+          },
+          {
+            "text": "Mark Zuckerberg",
+            "confidence": 0.9257870316505432,
+            "start": 716,
+            "end": 731
+          },
+          {
+            "text": "Amy Klobuchar",
+            "confidence": 0.9203985333442688,
+            "start": 473,
+            "end": 486
+          }
+        ],
+        "location": [
+          {
+            "text": "Madrid",
+            "confidence": 0.9530887603759766,
+            "start": 1733,
+            "end": 1739
+          },
+          {
+            "text": "Washington",
+            "confidence": 0.9484347105026245,
+            "start": 436,
+            "end": 446
+          },
+          {
+            "text": "Stockholm",
+            "confidence": 0.9444237947463989,
+            "start": 278,
+            "end": 287
+          },
+          {
+            "text": "Munich",
+            "confidence": 0.9418654441833496,
+            "start": 1823,
+            "end": 1829
+          },
+          {
+            "text": "Santa Clara",
+            "confidence": 0.9392780661582947,
+            "start": 74,
+            "end": 85
+          },
+          {
+            "text": "Tokyo",
+            "confidence": 0.9381722211837769,
+            "start": 1036,
+            "end": 1041
+          },
+          {
+            "text": "Minnesota",
+            "confidence": 0.9370082020759583,
+            "start": 490,
+            "end": 499
+          },
+          {
+            "text": "Cambridge",
+            "confidence": 0.9344523549079895,
+            "start": 1171,
+            "end": 1180
+          },
+          {
+            "text": "London",
+            "confidence": 0.932890772819519,
+            "start": 1320,
+            "end": 1326
+          },
+          {
+            "text": "Seattle",
+            "confidence": 0.9210689663887024,
+            "start": 823,
+            "end": 830
+          },
+          {
+            "text": "Austin",
+            "confidence": 0.8783264756202698,
+            "start": 1003,
+            "end": 1009
+          },
+          {
+            "text": "Cary, North Carolina",
+            "confidence": 0.7296797037124634,
+            "start": 309,
+            "end": 329
+          }
+        ],
+        "organization": [
+          {
+            "text": "Amazon",
+            "confidence": 0.92805415391922,
+            "start": 682,
+            "end": 688
+          },
+          {
+            "text": "Amazon",
+            "confidence": 0.917320191860199,
+            "start": 793,
+            "end": 799
+          }
+        ]
+      }
+    },
+    {
+      "entities": {
+        "person": [
+          {
+            "text": "Kylian Mbappé",
+            "confidence": 0.970497190952301,
+            "start": 46,
+            "end": 59
+          },
+          {
+            "text": "Shohei Ohtani",
+            "confidence": 0.9698839783668518,
+            "start": 378,
+            "end": 391
+          },
+          {
+            "text": "Max Hollein",
+            "confidence": 0.9695084691047668,
+            "start": 1233,
+            "end": 1244
+          },
+          {
+            "text": "Karen Bass",
+            "confidence": 0.9685340523719788,
+            "start": 505,
+            "end": 515
+          },
+          {
+            "text": "Tom Hanks",
+            "confidence": 0.9679281115531921,
+            "start": 529,
+            "end": 538
+          },
+          {
+            "text": "Jayson Tatum",
+            "confidence": 0.9678646922111511,
+            "start": 248,
+            "end": 260
+          },
+          {
+            "text": "Kirsty Coventry",
+            "confidence": 0.9669026136398315,
+            "start": 662,
+            "end": 677
+          },
+          {
+            "text": "Cate Blanchett",
+            "confidence": 0.9528840780258179,
+            "start": 888,
+            "end": 902
+          },
+          {
+            "text": "Céline Sciamma",
+            "confidence": 0.9158155918121338,
+            "start": 844,
+            "end": 858
+          }
+        ],
+        "location": [
+          {
+            "text": "New York",
+            "confidence": 0.9733883142471313,
+            "start": 1368,
+            "end": 1376
+          },
+          {
+            "text": "New York",
+            "confidence": 0.9537714719772339,
+            "start": 1129,
+            "end": 1137
+          },
+          {
+            "text": "Florence",
+            "confidence": 0.9389100074768066,
+            "start": 1210,
+            "end": 1218
+          },
+          {
+            "text": "Lausanne",
+            "confidence": 0.9304947257041931,
+            "start": 574,
+            "end": 582
+          },
+          {
+            "text": "Munich",
+            "confidence": 0.92667156457901,
+            "start": 101,
+            "end": 107
+          },
+          {
+            "text": "Madrid",
+            "confidence": 0.905450165271759,
+            "start": 24,
+            "end": 30
+          },
+          {
+            "text": "Brisbane",
+            "confidence": 0.9012313485145569,
+            "start": 599,
+            "end": 607
+          },
+          {
+            "text": "Madrid",
+            "confidence": 0.8955467343330383,
+            "start": 11,
+            "end": 17
+          },
+          {
+            "text": "Doha",
+            "confidence": 0.8909292817115784,
+            "start": 744,
+            "end": 748
+          },
+          {
+            "text": "Culver City",
+            "confidence": 0.8884092569351196,
+            "start": 1029,
+            "end": 1040
+          },
+          {
+            "text": "Valdebebas",
+            "confidence": 0.863624095916748,
+            "start": 145,
+            "end": 155
+          },
+          {
+            "text": "Dodger Stadium",
+            "confidence": 0.8564963936805725,
+            "start": 464,
+            "end": 478
+          }
+        ],
+        "organization": [
+          {
+            "text": "Metropolitan Museum of Art",
+            "confidence": 0.8010894060134888,
+            "start": 1099,
+            "end": 1125
+          },
+          {
+            "text": "IOC",
+            "confidence": 0.7456642985343933,
+            "start": 648,
+            "end": 651
+          },
+          {
+            "text": "Olympic Committee",
+            "confidence": 0.7379554510116577,
+            "start": 544,
+            "end": 561
+          },
+          {
+            "text": "Amazon MGM Studios",
+            "confidence": 0.7084770202636719,
+            "start": 1007,
+            "end": 1025
+          },
+          {
+            "text": "Bloomberg Philanthropies",
+            "confidence": 0.6978203058242798,
+            "start": 1295,
+            "end": 1319
+          },
+          {
+            "text": "Ford Foundation",
+            "confidence": 0.6882562041282654,
+            "start": 1275,
+            "end": 1290
+          },
+          {
+            "text": "Riyadh",
+            "confidence": 0.6535013914108276,
+            "start": 699,
+            "end": 705
+          },
+          {
+            "text": "Netflix",
+            "confidence": 0.6482551693916321,
+            "start": 904,
+            "end": 911
+          },
+          {
+            "text": "Warner Bros. Discovery",
+            "confidence": 0.6265868544578552,
+            "start": 916,
+            "end": 938
+          }
+        ]
+      }
+    }
+  ],
+  "expected_formatted": {
+    "entities": {
+      "person": [
+        {
+          "text": "Ursula von der Leyen",
+          "confidence": 0.9952242374420166,
+          "start": 212,
+          "end": 232
+        },
+        {
+          "text": "Kadri Simson",
+          "confidence": 0.9692443013191223,
+          "start": 326,
+          "end": 338
+        },
+        {
+          "text": "Terje Aasland",
+          "confidence": 0.9815007448196411,
+          "start": 362,
+          "end": 375
+        },
+        {
+          "text": "Jonas Gahr Støre",
+          "confidence": 0.9938406944274902,
+          "start": 809,
+          "end": 825
+        },
+        {
+          "text": "Anniken Huitfeldt",
+          "confidence": 0.9766275882720947,
+          "start": 932,
+          "end": 949
+        },
+        {
+          "text": "Espen Barth Eide",
+          "confidence": 0.9582703709602356,
+          "start": 957,
+          "end": 973
+        },
+        {
+          "text": "Lisa Murkowski",
+          "confidence": 0.9855523705482483,
+          "start": 1082,
+          "end": 1096
+        },
+        {
+          "text": "Friedrich Merz",
+          "confidence": 0.9834024906158447,
+          "start": 1630,
+          "end": 1644
+        },
+        {
+          "text": "Jonathan Brearley",
+          "confidence": 0.9909662008285522,
+          "start": 2149,
+          "end": 2166
+        },
+        {
+          "text": "Nicolai Tangen",
+          "confidence": 0.9785255789756775,
+          "start": 2377,
+          "end": 2391
+        },
+        {
+          "text": "Arianna Podestà",
+          "confidence": 0.9690342545509338,
+          "start": 2625,
+          "end": 2640
+        },
+        {
+          "text": "Tim Cook",
+          "confidence": 0.988955557346344,
+          "start": 2906,
+          "end": 2914
+        },
+        {
+          "text": "Craig Federighi",
+          "confidence": 0.9679627418518066,
+          "start": 3041,
+          "end": 3056
+        },
+        {
+          "text": "Johny Srouji",
+          "confidence": 0.9663487672805786,
+          "start": 3061,
+          "end": 3073
+        },
+        {
+          "text": "Satya Nadella",
+          "confidence": 0.9729602336883545,
+          "start": 3392,
+          "end": 3405
+        },
+        {
+          "text": "Sundar Pichai",
+          "confidence": 0.9754718542098999,
+          "start": 3553,
+          "end": 3566
+        },
+        {
+          "text": "Hiroshi Lockheimer",
+          "confidence": 0.9797257781028748,
+          "start": 3622,
+          "end": 3640
+        },
+        {
+          "text": "Jensen Huang",
+          "confidence": 0.9907739758491516,
+          "start": 3753,
+          "end": 3765
+        },
+        {
+          "text": "Lisa Su",
+          "confidence": 0.9812335968017578,
+          "start": 3859,
+          "end": 3866
+        },
+        {
+          "text": "Lina Khan",
+          "confidence": 0.9486358761787415,
+          "start": 4127,
+          "end": 4136
+        },
+        {
+          "text": "Andrew Ferguson",
+          "confidence": 0.9312554001808167,
+          "start": 4164,
+          "end": 4179
+        },
+        {
+          "text": "Amy Klobuchar",
+          "confidence": 0.9203985333442688,
+          "start": 4269,
+          "end": 4282
+        },
+        {
+          "text": "Mark Zuckerberg",
+          "confidence": 0.9257870316505432,
+          "start": 4512,
+          "end": 4527
+        },
+        {
+          "text": "Andy Jassy",
+          "confidence": 0.9369643330574036,
+          "start": 4598,
+          "end": 4608
+        },
+        {
+          "text": "Elon Musk",
+          "confidence": 0.9565722942352295,
+          "start": 4768,
+          "end": 4777
+        },
+        {
+          "text": "Novak Djokovic",
+          "confidence": 0.9679806232452393,
+          "start": 5408,
+          "end": 5422
+        },
+        {
+          "text": "Kylian Mbappé",
+          "confidence": 0.970497190952301,
+          "start": 5564,
+          "end": 5577
+        },
+        {
+          "text": "Jayson Tatum",
+          "confidence": 0.9678646922111511,
+          "start": 5766,
+          "end": 5778
+        },
+        {
+          "text": "Shohei Ohtani",
+          "confidence": 0.9698839783668518,
+          "start": 5896,
+          "end": 5909
+        },
+        {
+          "text": "Karen Bass",
+          "confidence": 0.9685340523719788,
+          "start": 6023,
+          "end": 6033
+        },
+        {
+          "text": "Tom Hanks",
+          "confidence": 0.9679281115531921,
+          "start": 6047,
+          "end": 6056
+        },
+        {
+          "text": "Kirsty Coventry",
+          "confidence": 0.9669026136398315,
+          "start": 6180,
+          "end": 6195
+        },
+        {
+          "text": "Céline Sciamma",
+          "confidence": 0.9158155918121338,
+          "start": 6362,
+          "end": 6376
+        },
+        {
+          "text": "Cate Blanchett",
+          "confidence": 0.9528840780258179,
+          "start": 6406,
+          "end": 6420
+        },
+        {
+          "text": "Max Hollein",
+          "confidence": 0.9695084691047668,
+          "start": 6751,
+          "end": 6762
+        }
+      ],
+      "location": [
+        {
+          "text": "Brussels",
+          "confidence": 0.9120861887931824,
+          "start": 56,
+          "end": 64
+        },
+        {
+          "text": "Paris",
+          "confidence": 0.9204970002174377,
+          "start": 516,
+          "end": 521
+        },
+        {
+          "text": "Munich",
+          "confidence": 0.8919703960418701,
+          "start": 759,
+          "end": 765
+        },
+        {
+          "text": "Oslo",
+          "confidence": 0.9354921579360962,
+          "start": 788,
+          "end": 792
+        },
+        {
+          "text": "New York",
+          "confidence": 0.913484513759613,
+          "start": 1028,
+          "end": 1036
+        },
+        {
+          "text": "Strasbourg",
+          "confidence": 0.8668767213821411,
+          "start": 1351,
+          "end": 1361
+        },
+        {
+          "text": "France",
+          "confidence": 0.8380675911903381,
+          "start": 1464,
+          "end": 1470
+        },
+        {
+          "text": "Berlin",
+          "confidence": 0.873517632484436,
+          "start": 1524,
+          "end": 1530
+        },
+        {
+          "text": "Amsterdam",
+          "confidence": 0.8931787610054016,
+          "start": 1743,
+          "end": 1752
+        },
+        {
+          "text": "Copenhagen",
+          "confidence": 0.8949188590049744,
+          "start": 1766,
+          "end": 1776
+        },
+        {
+          "text": "Southeast Asia",
+          "confidence": 0.873978853225708,
+          "start": 1904,
+          "end": 1918
+        },
+        {
+          "text": "Copenhagen",
+          "confidence": 0.9059543013572693,
+          "start": 2026,
+          "end": 2036
+        },
+        {
+          "text": "London",
+          "confidence": 0.9491921663284302,
+          "start": 2119,
+          "end": 2125
+        },
+        {
+          "text": "Netherlands",
+          "confidence": 0.8893248438835144,
+          "start": 2316,
+          "end": 2327
+        },
+        {
+          "text": "Skagerrak",
+          "confidence": 0.8613913655281067,
+          "start": 2579,
+          "end": 2588
+        },
+        {
+          "text": "Stavanger",
+          "confidence": 0.8726328015327454,
+          "start": 2837,
+          "end": 2846
+        },
+        {
+          "text": "Aberdeen",
+          "confidence": 0.8789047598838806,
+          "start": 2850,
+          "end": 2858
+        },
+        {
+          "text": "Cupertino",
+          "confidence": 0.9535942077636719,
+          "start": 2967,
+          "end": 2976
+        },
+        {
+          "text": "Hsinchu",
+          "confidence": 0.9414079189300537,
+          "start": 3160,
+          "end": 3167
+        },
+        {
+          "text": "Suwon",
+          "confidence": 0.9471690058708191,
+          "start": 3674,
+          "end": 3679
+        },
+        {
+          "text": "Taipei",
+          "confidence": 0.9577235579490662,
+          "start": 3799,
+          "end": 3805
+        },
+        {
+          "text": "Santa Clara",
+          "confidence": 0.9392780661582947,
+          "start": 3870,
+          "end": 3881
+        },
+        {
+          "text": "Stockholm",
+          "confidence": 0.9444237947463989,
+          "start": 4074,
+          "end": 4083
+        },
+        {
+          "text": "Cary, North Carolina",
+          "confidence": 0.7652834057807922,
+          "start": 4105,
+          "end": 4125
+        },
+        {
+          "text": "Washington",
+          "confidence": 0.9484347105026245,
+          "start": 4232,
+          "end": 4242
+        },
+        {
+          "text": "Minnesota",
+          "confidence": 0.9370082020759583,
+          "start": 4286,
+          "end": 4295
+        },
+        {
+          "text": "Seattle",
+          "confidence": 0.9210689663887024,
+          "start": 4619,
+          "end": 4626
+        },
+        {
+          "text": "Austin",
+          "confidence": 0.8783264756202698,
+          "start": 4799,
+          "end": 4805
+        },
+        {
+          "text": "Tokyo",
+          "confidence": 0.9381722211837769,
+          "start": 4832,
+          "end": 4837
+        },
+        {
+          "text": "Cambridge",
+          "confidence": 0.9344523549079895,
+          "start": 4967,
+          "end": 4976
+        },
+        {
+          "text": "London",
+          "confidence": 0.932890772819519,
+          "start": 5116,
+          "end": 5122
+        },
+        {
+          "text": "Madrid",
+          "confidence": 0.9530887603759766,
+          "start": 5529,
+          "end": 5535
+        },
+        {
+          "text": "Madrid",
+          "confidence": 0.905450165271759,
+          "start": 5542,
+          "end": 5548
+        },
+        {
+          "text": "Munich",
+          "confidence": 0.9418654441833496,
+          "start": 5619,
+          "end": 5625
+        },
+        {
+          "text": "Valdebebas",
+          "confidence": 0.863624095916748,
+          "start": 5663,
+          "end": 5673
+        },
+        {
+          "text": "Dodger Stadium",
+          "confidence": 0.8564963936805725,
+          "start": 5982,
+          "end": 5996
+        },
+        {
+          "text": "Lausanne",
+          "confidence": 0.9304947257041931,
+          "start": 6092,
+          "end": 6100
+        },
+        {
+          "text": "Brisbane",
+          "confidence": 0.9012313485145569,
+          "start": 6117,
+          "end": 6125
+        },
+        {
+          "text": "Doha",
+          "confidence": 0.8909292817115784,
+          "start": 6262,
+          "end": 6266
+        },
+        {
+          "text": "Culver City",
+          "confidence": 0.8884092569351196,
+          "start": 6547,
+          "end": 6558
+        },
+        {
+          "text": "New York",
+          "confidence": 0.9537714719772339,
+          "start": 6647,
+          "end": 6655
+        },
+        {
+          "text": "Florence",
+          "confidence": 0.9389100074768066,
+          "start": 6728,
+          "end": 6736
+        },
+        {
+          "text": "New York",
+          "confidence": 0.9733883142471313,
+          "start": 6886,
+          "end": 6894
+        }
+      ],
+      "organization": [
+        {
+          "text": "International Energy Agency",
+          "confidence": 0.8351283073425293,
+          "start": 456,
+          "end": 483
+        },
+        {
+          "text": "Siemens Energy",
+          "confidence": 0.7890618443489075,
+          "start": 741,
+          "end": 755
+        },
+        {
+          "text": "United States Department of Energy",
+          "confidence": 0.8406656980514526,
+          "start": 1106,
+          "end": 1140
+        },
+        {
+          "text": "Reuters",
+          "confidence": 0.7354905605316162,
+          "start": 1227,
+          "end": 1234
+        },
+        {
+          "text": "World Bank",
+          "confidence": 0.8014705181121826,
+          "start": 1782,
+          "end": 1792
+        },
+        {
+          "text": "TenneT",
+          "confidence": 0.820549726486206,
+          "start": 2302,
+          "end": 2308
+        },
+        {
+          "text": "Greenpeace",
+          "confidence": 0.751774251461029,
+          "start": 2433,
+          "end": 2443
+        },
+        {
+          "text": "Amazon",
+          "confidence": 0.92805415391922,
+          "start": 4478,
+          "end": 4484
+        },
+        {
+          "text": "Amazon",
+          "confidence": 0.917320191860199,
+          "start": 4589,
+          "end": 4595
+        },
+        {
+          "text": "Olympic Committee",
+          "confidence": 0.7379554510116577,
+          "start": 6062,
+          "end": 6079
+        },
+        {
+          "text": "IOC",
+          "confidence": 0.7456642985343933,
+          "start": 6166,
+          "end": 6169
+        },
+        {
+          "text": "Riyadh",
+          "confidence": 0.6535013914108276,
+          "start": 6217,
+          "end": 6223
+        },
+        {
+          "text": "Netflix",
+          "confidence": 0.6482551693916321,
+          "start": 6422,
+          "end": 6429
+        },
+        {
+          "text": "Warner Bros. Discovery",
+          "confidence": 0.6265868544578552,
+          "start": 6434,
+          "end": 6456
+        },
+        {
+          "text": "Amazon MGM Studios",
+          "confidence": 0.7084770202636719,
+          "start": 6525,
+          "end": 6543
+        },
+        {
+          "text": "Metropolitan Museum of Art",
+          "confidence": 0.8010894060134888,
+          "start": 6617,
+          "end": 6643
+        },
+        {
+          "text": "Ford Foundation",
+          "confidence": 0.6882562041282654,
+          "start": 6793,
+          "end": 6808
+        },
+        {
+          "text": "Bloomberg Philanthropies",
+          "confidence": 0.6978203058242798,
+          "start": 6813,
+          "end": 6837
+        }
+      ]
+    }
+  },
+  "expected_plain": {
+    "entities": {
+      "person": [
+        "Ursula von der Leyen",
+        "Kadri Simson",
+        "Terje Aasland",
+        "Jonas Gahr Støre",
+        "Anniken Huitfeldt",
+        "Espen Barth Eide",
+        "Lisa Murkowski",
+        "Friedrich Merz",
+        "Jonathan Brearley",
+        "Nicolai Tangen",
+        "Arianna Podestà",
+        "Tim Cook",
+        "Craig Federighi",
+        "Johny Srouji",
+        "Satya Nadella",
+        "Sundar Pichai",
+        "Hiroshi Lockheimer",
+        "Jensen Huang",
+        "Lisa Su",
+        "Lina Khan",
+        "Andrew Ferguson",
+        "Amy Klobuchar",
+        "Mark Zuckerberg",
+        "Andy Jassy",
+        "Elon Musk",
+        "Novak Djokovic",
+        "Kylian Mbappé",
+        "Jayson Tatum",
+        "Shohei Ohtani",
+        "Karen Bass",
+        "Tom Hanks",
+        "Kirsty Coventry",
+        "Céline Sciamma",
+        "Cate Blanchett",
+        "Max Hollein"
+      ],
+      "location": [
+        "Brussels",
+        "Paris",
+        "Munich",
+        "Oslo",
+        "New York",
+        "Strasbourg",
+        "France",
+        "Berlin",
+        "Amsterdam",
+        "Copenhagen",
+        "Southeast Asia",
+        "Copenhagen",
+        "London",
+        "Netherlands",
+        "Skagerrak",
+        "Stavanger",
+        "Aberdeen",
+        "Cupertino",
+        "Hsinchu",
+        "Suwon",
+        "Taipei",
+        "Santa Clara",
+        "Stockholm",
+        "Cary, North Carolina",
+        "Washington",
+        "Minnesota",
+        "Seattle",
+        "Austin",
+        "Tokyo",
+        "Cambridge",
+        "London",
+        "Madrid",
+        "Madrid",
+        "Munich",
+        "Valdebebas",
+        "Dodger Stadium",
+        "Lausanne",
+        "Brisbane",
+        "Doha",
+        "Culver City",
+        "New York",
+        "Florence",
+        "New York"
+      ],
+      "organization": [
+        "International Energy Agency",
+        "Siemens Energy",
+        "United States Department of Energy",
+        "Reuters",
+        "World Bank",
+        "TenneT",
+        "Greenpeace",
+        "Amazon",
+        "Amazon",
+        "Olympic Committee",
+        "IOC",
+        "Riyadh",
+        "Netflix",
+        "Warner Bros. Discovery",
+        "Amazon MGM Studios",
+        "Metropolitan Museum of Art",
+        "Ford Foundation",
+        "Bloomberg Philanthropies"
+      ]
+    }
+  },
+  "boundary_head_settings": {
+    "boundary_dim": 128,
+    "pair_dim": 128,
+    "boundary_refinement_layers": 1,
+    "boundary_ffn_multiplier": 2.0,
+    "start_top_k": 24,
+    "end_top_k": 24,
+    "ends_per_start": 12,
+    "starts_per_end": 12,
+    "candidate_budget": 192,
+    "training_candidate_budget": 192,
+    "max_gold_per_query": 64,
+    "end_block_size": 256,
+    "bidirectional_proposals": true,
+    "use_inside_evidence": true,
+    "dropout": 0.1,
+    "export_mode": "auto",
+    "vectorized_pair_elements": 16777216,
+    "boundary_negative_weight": 0.5,
+    "boundary_marginal_loss": "asymmetric_focal",
+    "loss_reduction": "sum",
+    "boundary_focal_gamma_positive": 0.0,
+    "boundary_focal_gamma_negative": 2.0,
+    "boundary_focal_clip": 0.05,
+    "hard_negatives_per_positive": 20,
+    "minimum_hard_negatives": 16,
+    "hard_negative_keep_all_when_absent": true,
+    "enable_span_content": true,
+    "content_dim": 64,
+    "content_soft_max_pool": false,
+    "enable_rotary_endpoints": true,
+    "rotary_base": 10000.0,
+    "boundary_attention_layers": 2,
+    "boundary_attention_heads": 4,
+    "boundary_attention_window": 128,
+    "query_conditioned_inside_weight": true,
+    "endpoint_difference_features": true,
+    "reranker_endpoint_compat": true,
+    "multihead_pair_compat_heads": 8,
+    "boundary_top_k_alpha": 0.08,
+    "boundary_top_k_max": 128,
+    "boundary_top_k_bucket": 8,
+    "candidate_pool": "shared",
+    "pool_boundary_top_k": 32,
+    "pool_size": 192,
+    "min_pool_per_query": 8,
+    "candidate_attention_layers": 0,
+    "candidate_attention_heads": 4,
+    "query_attention_layers": 0,
+    "enable_abstention": true,
+    "abstention_threshold": 0.5,
+    "proposal_loss_weight": 0.3,
+    "consistency_loss_weight": 0.1,
+    "rerank_listwise_weight": 0.3,
+    "soft_iou_aux_weight": 0.2,
+    "soft_iou_anneal_steps": 20000,
+    "abstention_loss_weight": 0.2,
+    "consistency_warmup_steps": 2000,
+    "enable_count_head": true,
+    "count_loss_weight": 0.2,
+    "adaptive_threshold": false,
+    "overlap_policy": "flat",
+    "pair_temperature": 1.0,
+    "relation_temperature": 1.0,
+    "record_temperature": 1.0,
+    "classification_temperature": 1.0,
+    "negative_query_ratio": 1.0,
+    "max_negative_queries_per_batch": 64,
+    "classification_loss_weight": 1.0,
+    "enable_records": true,
+    "record_dim": 128,
+    "record_instance_queries": 32,
+    "record_anchor_proposal_threshold": 0.2,
+    "record_anchor_threshold": 0.5,
+    "record_field_threshold": 0.5,
+    "record_loss_weight": 1.0,
+    "enable_relations": true,
+    "relation_heads_per_type": 32,
+    "relation_tails_per_type": 32,
+    "relation_pair_cap": 64,
+    "relation_loss_weight": 1.0,
+    "relation_argument_proposal_threshold": 0.2,
+    "directional_relation_states": true,
+    "relation_biaffine_content": true
+  }
+}

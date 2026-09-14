@@ -67,7 +67,9 @@ public func downloadModelDirectory(
     let repo = Hub.Repo(id: repoId)
     let filePatterns = [
         "*.safetensors", "config.json",
-        "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json"
+        "tokenizer.json", "tokenizer_config.json", "special_tokens_map.json",
+        // The encoder's real shape/vocab lives here (the top-level config omits it).
+        "encoder_config/config.json"
     ]
 
     do {
